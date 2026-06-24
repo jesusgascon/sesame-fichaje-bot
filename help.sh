@@ -24,6 +24,9 @@ Comprobaciones:
   python3 probe_pause_candidates.py
       Busca el id de Descanso en checks existentes.
 
+  python3 set_telegram_commands.py
+      Registra /fichar, /pausar, /hoy y otros comandos en Telegram.
+
 Telegram:
   /start       ayuda inicial
   /ayuda       ayuda completa
@@ -31,8 +34,8 @@ Telegram:
   /sesion      comprueba sesion Sesame
   /estado      estado real o simulado
   /hoy         fichajes de hoy
-  fichar       entrar/salir
-  pausar       empezar/terminar descanso
+  /fichar      entrar/salir
+  /pausar      empezar/terminar descanso
 
 Servicio siempre encendido:
   docs/always-on.md
@@ -42,6 +45,9 @@ Sesion Sesame:
 
 Autorizacion Telegram:
   docs/telegram-auth.md
+
+Siri / Atajos iPhone:
+  docs/siri-shortcuts.md
 
 Parar si corre en terminal:
   Ctrl+C
