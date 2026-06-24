@@ -91,8 +91,19 @@ Ficheros (todos en la raíz):
   Pruébalo: `python3 state_machine.py` (imprime la tabla de decisiones).
 - **`sesame_client.py`** — ejecuta acciones contra el endpoint interno. **Dry-run por
   defecto** (`DRY_RUN=True`, `ALLOW_REAL=False`). El camino real lanza `RuntimeError`.
+  También carga `config.json`, prepara auth/coords y tiene lectura GET configurable
+  para clasificar estado real (`state_url_template` pendiente de confirmar).
 - **`telegram_bot.py`** — bot Telegram (long-polling, sin dependencias). Comandos:
-  `fichar`, `pausar`, `/estado`, `/vincular`. `get_state` es un STUB.
+  `fichar`, `pausar`, `/estado`, `/vincular`. En dry-run usa `BOT_FAKE_STATE`; fuera
+  de dry-run llama a `sesame_client.get_current_state`. Incluye caducidad de
+  confirmaciones, rate-limit, lock por empleado, kill switch y auditoría JSONL con
+  hashes (sin secretos ni employeeId en claro).
+- **Scripts añadidos:** `run_dry_run.sh`, `run_real_state_dry_actions.sh`, `help.sh`,
+  `check_config.py`, `probe_sesame_state.py`, `probe_sesame_readonly.py`,
+  `probe_sesame_checks.py`, `probe_pause_candidates.py`.
+- **Docs añadidos:** `docs/sesame-session.md`, `docs/telegram-auth.md`,
+  `docs/telegram-usage.md`, `docs/sesame-origin.md`, `docs/always-on.md`,
+  `docs/production-runbook.md`.
 - **`config.example.json`** — plantilla (copiar a `config.json`, gitignored).
 - **`PLAN.md`** — plan extendido (síntesis de los 3 agentes: viabilidad, arquitectura,
   seguridad). **`README.md`** — uso. **`.gitignore`** — ignora secretos/config.
@@ -138,13 +149,18 @@ PAUSE_START=check-in(idPausa) · PAUSE_END=check-out(idPausa).
 ## 7. PRÓXIMOS PASOS (Fase 2) — por aquí seguimos
 
 Orden sugerido (proponer a Jesús y aprobar antes de cada salto a "real"):
-1. **Cablear `get_state` real**: leer el estado actual de Jesús desde Sesame (los mismos
-   endpoints de checks que usa el dashboard) para que la máquina de estados decida bien.
+1. **Cablear `get_state` real**: hecho usando `GET /api/v3/employees/{id}/checks`
+   del día y clasificación de tramos abiertos. `/estado` lee Sesame real en
+   `run_real_state_dry_actions.sh`.
 2. **Capturar de forma segura el token propio de Jesús** + su `employeeId` + el
    `workCheckTypeId` de pausa (de `assigned-work-check-types`). Guardar en `config.json`
    (gitignored). **Nunca pegarlo en claro en el chat.**
-3. **Emparejamiento OTP** (Telegram) + almacén cifrado del binding.
-4. **Idempotencia + auditoría + kill switch + confirmación** en el flujo.
+3. **Emparejamiento OTP** (Telegram) + almacén cifrado del binding. Parcialmente
+   cubierto con `authorized_chat_ids` local; OTP/cifrado siguen pendientes.
+4. **Idempotencia + auditoría + kill switch + confirmación** en el flujo. Base hecha:
+   relectura de estado antes de ejecutar, confirmaciones con caducidad, lock por
+   empleado, rate-limit, kill switch, botones Telegram SI/NO y auditoría JSONL.
+   **Pendiente:** endurecer persistencia/binding cifrado.
 5. **PRUEBA REAL CONTROLADA** (con OK explícito de Jesús): un `check-in` + `check-out` en
    su propio usuario para validar que el POST por Bearer funciona. Crea un fichaje real de
    segundos (visible y borrable). Solo tras esto, habilitar el modo real con guardas.

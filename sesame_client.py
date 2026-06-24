@@ -21,14 +21,18 @@ Endpoint interno confirmado:
 import json
 import logging
 import os
+from datetime import date, datetime
+from pathlib import Path
 import ssl
 import urllib.request
+from urllib.error import HTTPError
 
 log = logging.getLogger("sesame_client")
 
 SESAME_BASE = os.environ.get("BOT_SESAME_BASE", "https://back-eu1.sesametime.com")
 DRY_RUN = os.environ.get("BOT_DRY_RUN", "1") != "0"
 ALLOW_REAL = os.environ.get("BOT_ALLOW_REAL", "0") == "1"
+CONFIG_PATH = Path(os.environ.get("BOT_CONFIG", "config.json"))
 
 # Tipo de "pausa" en Sesame (de GET /api/v3/employees/{id}/assigned-work-check-types).
 # TODO: confirmar el id real antes de usar pausas en real.
@@ -37,9 +41,61 @@ PAUSE_CHECK_TYPE_ID = os.environ.get("BOT_PAUSE_CHECK_TYPE_ID") or None
 _ENDPOINT = {
     "CLOCK_IN":    ("check-in",  None),
     "CLOCK_OUT":   ("check-out", None),
-    "PAUSE_START": ("check-in",  PAUSE_CHECK_TYPE_ID),
-    "PAUSE_END":   ("check-out", PAUSE_CHECK_TYPE_ID),
+    "PAUSE_START": ("check-in",  "pause"),
+    "PAUSE_END":   ("check-out", "pause"),
 }
+
+
+def load_config(path: Path | str | None = None) -> dict:
+    """Carga config local gitignored. Env vars siguen siendo la fuente prioritaria."""
+    cfg_path = Path(path or CONFIG_PATH)
+    if not cfg_path.exists():
+        return {}
+    with cfg_path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def get_setting(name: str, default=None, config: dict | None = None):
+    env_name = f"BOT_{name.upper()}"
+    if env_name in os.environ:
+        return os.environ[env_name]
+    cfg = config if config is not None else load_config()
+    return cfg.get(name, default)
+
+
+def get_auth(config: dict | None = None) -> dict:
+    cfg = config if config is not None else load_config()
+    return {
+        "token": get_setting("sesame_token", config=cfg),
+        "usid": get_setting("usid", config=cfg),
+        "csid": get_setting("csid", config=cfg),
+        "esid": get_setting("esid", config=cfg),
+    }
+
+
+def get_coordinates(config: dict | None = None):
+    cfg = config if config is not None else load_config()
+    raw = cfg.get("coordinates")
+    if not raw:
+        lat = os.environ.get("BOT_LATITUDE")
+        lon = os.environ.get("BOT_LONGITUDE")
+        return (float(lat), float(lon)) if lat and lon else None
+    return (raw.get("latitude"), raw.get("longitude"))
+
+
+def _resolve_endpoint(action: str):
+    if action not in _ENDPOINT:
+        raise ValueError(f"Acción desconocida: {action}")
+    path, wct = _ENDPOINT[action]
+    if wct != "pause":
+        return path, wct
+
+    pause_id = get_setting("pause_check_type_id") or os.environ.get("BOT_PAUSE_CHECK_TYPE_ID") or PAUSE_CHECK_TYPE_ID
+    if pause_id:
+        return path, pause_id
+    if DRY_RUN:
+        return path, "PENDING_PAUSE_CHECK_TYPE_ID"
+    raise RuntimeError("Falta pause_check_type_id para ejecutar pausas en real.")
 
 
 def _body(coords, work_check_type_id):
@@ -52,9 +108,7 @@ def _body(coords, work_check_type_id):
 def execute_action(action: str, employee_id: str, coords=None, auth=None) -> dict:
     """Ejecuta UNA acción atómica. En dry-run solo registra y simula.
     `auth` = dict con el token/csid de SESIÓN DEL PROPIO usuario (Fase 2)."""
-    if action not in _ENDPOINT:
-        raise ValueError(f"Acción desconocida: {action}")
-    path, wct = _ENDPOINT[action]
+    path, wct = _resolve_endpoint(action)
     url = f"{SESAME_BASE}/api/v3/employees/{employee_id}/{path}"
     body = _body(coords, wct)
 
@@ -70,7 +124,276 @@ def execute_action(action: str, employee_id: str, coords=None, auth=None) -> dic
 
 
 def execute_plan(actions, employee_id, coords=None, auth=None) -> list:
-    return [execute_action(a, employee_id, coords, auth) for a in actions]
+    cfg = load_config()
+    return [
+        execute_action(
+            a,
+            employee_id,
+            coords if coords is not None else get_coordinates(cfg),
+            auth if auth is not None else get_auth(cfg),
+        )
+        for a in actions
+    ]
+
+
+def get_current_state(employee_id: str, auth=None, state_url_template: str | None = None) -> str:
+    """Lee el estado actual desde Sesame y lo normaliza a out/working/paused/remote.
+
+    En dry-run mantiene el comportamiento anterior para poder probar sin red. Para
+    lecturas reales hace falta configurar BOT_STATE_URL_TEMPLATE o state_url_template
+    en config.json. La plantilla puede usar {base} y {employee_id}.
+    """
+    if DRY_RUN:
+        return os.environ.get("BOT_FAKE_STATE", "out")
+
+    cfg = load_config()
+    template = state_url_template or get_setting("state_url_template", config=cfg)
+    if not template:
+        return classify_state_from_checks(get_checks(employee_id, auth=auth or get_auth(cfg)))
+
+    url = template.format(base=SESAME_BASE, employee_id=employee_id)
+    payload = _real_get_json(url, auth or get_auth(cfg))
+    return classify_state(payload)
+
+
+def get_assigned_work_check_types(employee_id: str, auth=None) -> list:
+    """Lee tipos de pausa/asistencia asignados al empleado. Solo GET."""
+    cfg = load_config()
+    url = f"{SESAME_BASE}/api/v3/employees/{employee_id}/assigned-work-check-types"
+    payload = _real_get_json(url, auth or get_auth(cfg))
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("data", "items", "workCheckTypes", "assignedWorkCheckTypes"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
+
+def get_checks(employee_id: str, from_day: str | None = None, to_day: str | None = None, auth=None):
+    """Lee checks de Sesame para un rango. Solo GET."""
+    cfg = load_config()
+    start = from_day or date.today().isoformat()
+    end = to_day or start
+    url = (
+        f"{SESAME_BASE}/api/v3/employees/{employee_id}/checks"
+        f"?from={start}&to={end}&includeOut=true"
+    )
+    return _real_get_json(url, auth or get_auth(cfg))
+
+
+def classify_state_from_checks(payload) -> str:
+    checks = _extract_list(payload)
+    open_checks = [
+        item for item in checks
+        if isinstance(item, dict)
+        and _present(item.get("checkIn"))
+        and not _present(item.get("checkOut"))
+    ]
+    if not open_checks:
+        return "out"
+
+    current = open_checks[-1]
+    if _present(current.get("workBreak")) or _present(current.get("workBreakId")):
+        return "paused"
+    if current.get("isRemote"):
+        return "remote"
+    return "working"
+
+
+def summarize_checks_today(employee_id: str, auth=None) -> list[str]:
+    """Devuelve lineas de resumen de los fichajes de hoy. Solo GET."""
+    payload = get_checks(employee_id, auth=auth)
+    return format_checks_summary(payload)
+
+
+def format_checks_summary(payload) -> list[str]:
+    checks = _extract_list(payload)
+    if not checks:
+        return ["Sin fichajes hoy."]
+
+    lines = []
+    for item in checks:
+        if not isinstance(item, dict):
+            continue
+        start = _format_check_time(item.get("checkIn"))
+        end = _format_check_time(item.get("checkOut")) or "abierto"
+        label = _check_label(item)
+        lines.append(f"{start} - {end} · {label}")
+    return lines or ["Sin fichajes hoy."]
+
+
+def find_break_candidates(payload) -> list[dict]:
+    checks = _extract_list(payload)
+    candidates = {}
+    for item in checks:
+        if not isinstance(item, dict):
+            continue
+        if not (_present(item.get("workBreak")) or _present(item.get("workBreakId"))):
+            continue
+        candidate_id = item.get("workBreakId") or _nested_id(item.get("workBreak"))
+        label = _nested_label(item.get("workBreak")) or "Descanso"
+        key = candidate_id or label
+        candidates[key] = {"id": candidate_id, "label": label}
+    return list(candidates.values())
+
+
+def _check_label(item):
+    if item.get("isRemote"):
+        return "Teletrabajo"
+    if _present(item.get("workBreak")) or _present(item.get("workBreakId")):
+        return _nested_label(item.get("workBreak")) or "Descanso"
+    return _nested_label(item.get("workCheckType")) or "Oficina"
+
+
+def _nested_label(value):
+    if not isinstance(value, dict):
+        return ""
+    for key in ("name", "title", "label", "description"):
+        if value.get(key):
+            return str(value[key])
+    return ""
+
+
+def _nested_id(value):
+    if not isinstance(value, dict):
+        return ""
+    for key in ("id", "uuid", "workBreakId", "workCheckTypeId"):
+        if value.get(key):
+            return str(value[key])
+    return ""
+
+
+def _format_check_time(value):
+    if not _present(value):
+        return ""
+    if isinstance(value, dict):
+        for key in ("date", "time", "datetime", "createdAt", "updatedAt"):
+            if value.get(key):
+                return _format_time_value(value[key])
+        for nested in value.values():
+            formatted = _format_check_time(nested)
+            if formatted:
+                return formatted
+        return ""
+    return _format_time_value(value)
+
+
+def _format_time_value(value):
+    text = str(value)
+    if "T" in text:
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%H:%M:%S")
+        except ValueError:
+            pass
+    if len(text) >= 8 and text[2:3] == ":":
+        return text[:8]
+    return text
+
+
+def _extract_list(payload):
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("data", "items", "checks", "results"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
+
+def _present(value):
+    return value is not None and value != "" and value != {}
+
+
+def classify_state(payload) -> str:
+    """Clasifica respuestas habituales de presencia sin acoplarse a una forma exacta."""
+    record = _find_presence_record(payload)
+    if record is None:
+        return "out"
+
+    text = " ".join(
+        str(record.get(k, "")).lower()
+        for k in ("status", "state", "type", "workCheckTypeName", "workCheckType")
+    )
+    if any(marker in text for marker in ("out", "finished", "closed", "inactive", "absent")):
+        return "out"
+    if "remote" in text or "teletrab" in text:
+        return "remote"
+    if "pause" in text or "pausa" in text or "break" in text:
+        return "paused"
+    if any(marker in text for marker in ("working", "trabajando", "active", "clock_in", "check-in")):
+        return "working"
+
+    if record.get("isPaused") or record.get("paused"):
+        return "paused"
+    if record.get("isRemote") or record.get("remote"):
+        return "remote"
+    if record.get("isWorking") or record.get("working") or record.get("active"):
+        return "working"
+    return "out"
+
+
+def _find_presence_record(value):
+    if isinstance(value, dict):
+        for key in ("presence", "current", "currentCheck", "lastCheck", "data"):
+            found = _find_presence_record(value.get(key))
+            if found is not None:
+                return found
+        if any(
+            k in value
+            for k in (
+                "status",
+                "state",
+                "type",
+                "workCheckTypeName",
+                "workCheckType",
+                "isWorking",
+                "isPaused",
+            )
+        ):
+            return value
+        for v in value.values():
+            found = _find_presence_record(v)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = _find_presence_record(item)
+            if found is not None:
+                return found
+    return None
+
+
+def _real_get_json(url, auth):  # pragma: no cover  (depende de Sesame)
+    token = (auth or {}).get("token")
+    usid = (auth or {}).get("usid")
+    csid = (auth or {}).get("csid")
+    esid = (auth or {}).get("esid")
+    if not csid or (not token and not usid):
+        raise RuntimeError("Faltan sesame_token o usid, y csid, para leer Sesame.")
+
+    headers = {"csid": csid}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if usid:
+        headers["Cookie"] = f"USID={usid}"
+    if esid:
+        headers["esid"] = esid
+
+    req = urllib.request.Request(
+        url,
+        method="GET",
+        headers=headers,
+    )
+    ctx = ssl.create_default_context()
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=15) as r:
+            return json.loads(r.read().decode("utf-8", "replace"))
+    except HTTPError as e:
+        body = e.read().decode("utf-8", "replace")
+        raise RuntimeError(f"Sesame GET falló: HTTP {e.code} {body[:300]}") from e
 
 
 def _real_post(url, body, token, csid):  # pragma: no cover  (reservado Fase 2)

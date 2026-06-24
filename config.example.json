@@ -1,16 +1,27 @@
 {
   "_comment": "Copia este fichero a config.json (gitignored) y rellénalo. NO subas config.json.",
   "telegram_token": "TOKEN_DE_@BotFather",
+  "authorized_chat_ids": [],
 
-  "_sesame_comment": "TU PROPIO token de sesión de Sesame (no el admin del dashboard). Se captura igual que en el dashboard. Mantenlo en secreto.",
-  "sesame_token": "TU_TOKEN_DE_SESION",
+  "_sesame_comment": "TU PROPIA sesion de Sesame. Si ves Authorization: Bearer, usa sesame_token. Si no, usa usid desde la cookie USID. Mantenlo en secreto.",
+  "sesame_token": "",
+  "usid": "",
   "csid": "TU_CSID_DE_EMPRESA",
+  "esid": "",
 
   "_employee_comment": "Tu employeeId en Sesame (el del usuario con tu móvil registrado).",
   "employee_id": "TU_EMPLOYEE_ID",
   "phone": "TU_MOVIL_REGISTRADO_EN_SESAME",
 
+  "_state_comment": "Endpoint GET de solo lectura para estado actual. Se confirmará desde el navegador/dashboard antes de quitar dry-run. Admite {base} y {employee_id}.",
+  "state_url_template": null,
+
   "coordinates": { "latitude": 41.6514048, "longitude": -0.8650752 },
+
+  "_safety_runtime_comment": "Guardas locales del bot. audit_log esta gitignored.",
+  "audit_log": "audit.jsonl",
+  "dry_state_file": "dry_state.json",
+  "kill_switch": false,
 
   "_pause_comment": "Id del tipo de pausa (de GET /api/v3/employees/{id}/assigned-work-check-types). Pendiente de confirmar.",
   "pause_check_type_id": null,
