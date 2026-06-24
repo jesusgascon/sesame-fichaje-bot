@@ -1,0 +1,14 @@
+[Unit]
+Description=Sesame fichaje bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jesus/Escritorio/Proyectos/sesame-fichaje-bot
+ExecStart=/home/jesus/Escritorio/Proyectos/sesame-fichaje-bot/run_real_state_dry_actions.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

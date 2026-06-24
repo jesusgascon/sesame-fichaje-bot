@@ -5,6 +5,9 @@ config.secrets.json
 key.bin
 .env
 .env.*
+audit.jsonl
+audit*.jsonl
+dry_state.json
 
 # Python
 __pycache__/
