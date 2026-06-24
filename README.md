@@ -92,6 +92,7 @@ esten rellenos en `config.json`:
 python3 probe_sesame_readonly.py
 python3 probe_sesame_state.py
 python3 probe_pause_candidates.py
+python3 set_telegram_commands.py
 ```
 
 Si en Network aparece `Authorization: Bearer ...`, pega el valor sin `Bearer` en
@@ -103,7 +104,7 @@ simuladas:
 ./run_real_state_dry_actions.sh
 ```
 
-En ese modo `/estado` y `/hoy` son lecturas reales de Sesame; `fichar` y `pausar`
+En ese modo `/estado` y `/hoy` son lecturas reales de Sesame; `/fichar` y `/pausar`
 siguen simulados mientras `BOT_ALLOW_REAL=0`.
 
 `/modo` muestra desde Telegram si el bot esta en simulacion, estado real con
@@ -128,6 +129,8 @@ Guias operativas:
   Telegram.
 - [`docs/sesame-origin.md`](docs/sesame-origin.md) — como se vera el origen del
   fichaje en Sesame.
+- [`docs/siri-shortcuts.md`](docs/siri-shortcuts.md) — como preparar Atajos/Siri
+  para abrir el bot y usar comandos slash.
 - [`docs/github-private.md`](docs/github-private.md) — como subirlo a un repositorio
   privado sin secretos.
 

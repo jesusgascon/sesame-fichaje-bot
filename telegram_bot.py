@@ -152,8 +152,8 @@ def start_text():
         "Comandos principales:\n"
         "- /estado: ver si estás fuera, trabajando o descansando.\n"
         "- /hoy: ver tus fichajes de hoy.\n"
-        "- fichar: entrar o salir.\n"
-        "- pausar: empezar o terminar descanso.\n"
+        "- /fichar: entrar o salir.\n"
+        "- /pausar: empezar o terminar descanso.\n"
         "- /sesion: comprobar conexión con Sesame.\n"
         "- /modo: ver modo de seguridad actual.\n"
         "- /mi_chat_id: ver tu identificador de chat para autorizarte.\n"
@@ -192,8 +192,8 @@ def help_text():
     return (
         f"Bot de fichaje Sesame ({mode}).\n\n"
         "Comandos:\n"
-        "- fichar: inicia o finaliza la jornada.\n"
-        "- pausar: inicia o termina una pausa.\n"
+        "- /fichar o fichar: inicia o finaliza la jornada.\n"
+        "- /pausar o pausar: inicia o termina una pausa.\n"
         "- /estado: muestra el estado actual.\n"
         "- /hoy: muestra los fichajes de hoy.\n"
         "- /sesion: comprueba si la sesion de Sesame sigue viva.\n"
@@ -405,7 +405,7 @@ def handle(chat_id, text):
             return send(chat_id, f"Estás {state_label(state)}. {plan.description}.\nPulsa SI para confirmar o NO para cancelar.", confirm_keyboard())
         return run_plan(chat_id, employee_id, plan, command=command, expected_state=state)
 
-    send(chat_id, "No te he entendido. Usa: fichar · pausar · /estado")
+    send(chat_id, "No te he entendido. Usa: /fichar · /pausar · /estado")
 
 
 def main():
