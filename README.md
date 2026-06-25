@@ -30,7 +30,15 @@ El fichaje se dirige por el `employeeId` de la URL
 - `telegram_bot.py` — bot de Telegram (long-polling, sin dependencias).
   Mantiene confirmaciones con botones SI/NO y caducidad, rate-limit, lock por
   empleado, kill switch y auditoría local JSONL sin secretos.
+- `link_store.py` — almacén persistente (JSON) del vínculo chat↔empleado. Costura
+  para el emparejamiento cifrado por OTP de la Fase 2.
 - `config.example.json` — plantilla de config (cópiala a `config.json`, gitignored).
+
+## Tests (sin red)
+```bash
+./run_tests.sh        # suite unittest (stdlib): state machine, clasificación,
+                      # LinkStore y flujo del bot con send inyectado. Todo en dry-run.
+```
 
 ## Probar en simulación (sin red)
 ```bash

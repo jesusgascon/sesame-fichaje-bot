@@ -4,8 +4,8 @@ Esqueleto del bot de Telegram para fichar/pausar (DRY-RUN).
 - Sin dependencias externas: habla con la Bot API por HTTP (long-polling).
 - No arranca si no hay BOT_TELEGRAM_TOKEN (evita ejecuciones accidentales).
 - En dry-run NO ficha nada real (ver sesame_client).
-- Emparejamiento chat<->empleado: STUB en memoria. Fase 2: contacto + OTP
-  verificado contra el teléfono de tu perfil de Sesame, y almacén cifrado.
+- Emparejamiento chat<->empleado: persistido en LinkStore (JSON). Fase 2: contacto
+  + OTP verificado contra el teléfono de tu perfil de Sesame, y almacén cifrado.
 """
 
 import json
@@ -13,10 +13,12 @@ import logging
 import os
 import hashlib
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import link_store
 import sesame_client
 import state_machine as sm
 
@@ -27,7 +29,8 @@ CONFIG = sesame_client.load_config()
 TOKEN = os.environ.get("BOT_TELEGRAM_TOKEN") or CONFIG.get("telegram_token", "")
 API = f"https://api.telegram.org/bot{TOKEN}"
 
-LINKS = {}          # chat_id -> employeeId (Fase 2: OTP + cifrado)
+LINKS_FILE = Path(os.environ.get("BOT_LINKS_FILE", CONFIG.get("links_file", "links.json")))
+LINKS = link_store.LinkStore(LINKS_FILE)   # chat_id -> employeeId (persistente; Fase 2: OTP + cifrado)
 PENDING = {}        # chat_id -> dict(command, plan, state, expires_at)
 FAKE_STATE = os.environ.get("BOT_FAKE_STATE", "out")  # estado simulado para dry-run
 DRY_STATE = {}       # employeeId -> estado simulado mientras corre el proceso
@@ -96,7 +99,12 @@ def kill_switch_enabled() -> bool:
     env = os.environ.get("BOT_KILL_SWITCH")
     if env is not None:
         return env == "1"
-    return bool(CONFIG.get("kill_switch", False))
+    # Releído en caliente desde disco: poner "kill_switch": true en config.json
+    # surte efecto sin reiniciar el bot (importante en una emergencia).
+    try:
+        return bool(sesame_client.load_config().get("kill_switch", False))
+    except Exception:  # noqa: BLE001
+        return bool(CONFIG.get("kill_switch", False))
 
 
 def rate_limited(chat_id) -> bool:
@@ -410,18 +418,31 @@ def main():
     load_dry_state()
     log.info("Bot arrancado. DRY_RUN=%s ALLOW_REAL=%s", sesame_client.DRY_RUN, sesame_client.ALLOW_REAL)
     offset = 0
+    backoff = 1
     while True:
         try:
             upd = _tg("getUpdates", offset=offset, timeout=30)
+            backoff = 1  # éxito: reinicia el backoff
             for u in upd.get("result", []):
                 offset = u["update_id"] + 1
                 msg = u.get("message") or {}
                 chat = (msg.get("chat") or {}).get("id")
-                if chat is not None:
+                if chat is None:
+                    continue
+                # Un mensaje problemático no debe tumbar el loop ni disparar backoff de red.
+                try:
                     handle(chat, msg.get("text", ""))
+                except Exception as e:  # noqa: BLE001
+                    log.error("handle(%s): %s", chat, e)
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            # Errores de red esperables en long-polling: backoff exponencial con techo.
+            log.warning("red: %s (reintento en %ss)", e, backoff)
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 60)
         except Exception as e:  # noqa: BLE001
             log.error("loop: %s", e)
-            time.sleep(3)
+            time.sleep(min(backoff, 5))
+            backoff = min(backoff * 2, 60)
 
 
 if __name__ == "__main__":
