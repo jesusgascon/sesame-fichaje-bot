@@ -193,7 +193,7 @@ Todo lo planificado de la Fase 2 está hecho y validado en real:
 
 **Posibles siguientes pasos (opcionales):** selector Oficina/Remoto si mezcla
 ubicaciones; endpoint HTTPS para Atajos/Siri; cifrado del binding si cambia el modelo de
-amenaza. Re-armar `./arm_real.sh` cuando caduque la ventana (~30 días).
+amenaza. Re-armar `./arm_real.sh` cuando caduque la ventana (~35 días).
 
 ---
 

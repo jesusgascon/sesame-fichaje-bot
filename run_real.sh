@@ -18,7 +18,7 @@ Sin ENABLE_REAL o sin binding, el bot NO ficha (lanza un error controlado).
 Parada de emergencia: "kill_switch": true en config.json (se relee en caliente),
 o Ctrl+C, o systemctl --user stop sesame-fichaje-bot.service.
 
-Ventana del 3er factor: BOT_ENABLE_REAL_TTL_SECONDS (por defecto 2592000 = 30 dias).
+Ventana del 3er factor: BOT_ENABLE_REAL_TTL_SECONDS (por defecto 3024000 = 35 dias).
 Ver docs/security.md y docs/production-runbook.md.
 EOF
   exit 0
@@ -29,7 +29,7 @@ cd "$(dirname "$0")"
 
 export BOT_DRY_RUN=0
 export BOT_ALLOW_REAL=1
-export BOT_ENABLE_REAL_TTL_SECONDS="${BOT_ENABLE_REAL_TTL_SECONDS:-2592000}"   # 30 dias
+export BOT_ENABLE_REAL_TTL_SECONDS="${BOT_ENABLE_REAL_TTL_SECONDS:-3024000}"   # 35 dias
 
 if [[ ! -f ENABLE_REAL ]]; then
   echo "AVISO: no existe ENABLE_REAL -> el bot responde y lee, pero NO fichara real."

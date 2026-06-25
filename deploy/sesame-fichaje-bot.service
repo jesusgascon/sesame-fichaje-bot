@@ -9,7 +9,7 @@ WorkingDirectory=/home/jesus/Escritorio/Proyectos/sesame-fichaje-bot
 # MODO REAL. Aun asi, sin el fichero ENABLE_REAL (./arm_real.sh) y sin chat
 # vinculado por OTP, el bot NO ficha real: solo lee/responde. Ver docs/security.md.
 ExecStart=/home/jesus/Escritorio/Proyectos/sesame-fichaje-bot/run_real.sh
-Environment=BOT_ENABLE_REAL_TTL_SECONDS=2592000
+Environment=BOT_ENABLE_REAL_TTL_SECONDS=3024000
 # Ficheros nuevos (links.json, audit.jsonl, ...) nacen a 600.
 UMask=0077
 Restart=always

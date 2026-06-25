@@ -192,7 +192,7 @@ Detalle completo en `docs/security.md`. Lo esencial:
 ### Armar / desarmar el modo real
 
 ```bash
-./arm_real.sh        # arma el 3er factor (ventana de 30 días por defecto)
+./arm_real.sh        # arma el 3er factor (ventana de 35 días por defecto)
 ./arm_real.sh off    # desarma
 ```
 
@@ -264,7 +264,7 @@ systemctl --user stop    sesame-fichaje-bot.service   # parar
 
 El servicio arranca en modo real; el binding (`links.json`) y `ENABLE_REAL` persisten,
 así que no hay que revincular ni rearmar en cada arranque. Recuerda **rearmar
-`./arm_real.sh`** cuando caduque la ventana (30 días).
+`./arm_real.sh`** cuando caduque la ventana (35 días).
 
 ---
 
@@ -276,7 +276,7 @@ así que no hay que revincular ni rearmar en cada arranque. Recuerda **rearmar
 | "No estás vinculado. Usa /vincular" | En modo real falta el binding OTP. Haz `/vincular`. |
 | `/sesion` dice "no conectada" | Sesión de Sesame caducada. Renueva `usid`/`csid`/`esid` (`docs/sesame-session.md`) y reinicia. |
 | "Camino REAL no armado: falta ENABLE_REAL" | Ejecuta `./arm_real.sh`. |
-| "Camino REAL no armado: ENABLE_REAL caducado" | Vuelve a `./arm_real.sh` (la ventana caduca a 30 días). |
+| "Camino REAL no armado: ENABLE_REAL caducado" | Vuelve a `./arm_real.sh` (la ventana caduca a 35 días). |
 | HTTP 422 al fichar/pausar | Body o endpoint incorrecto para tu Sesame. Captura la petición real del navegador y ajústalo (ver §5). |
 | Sale "Remoto" y querías "Oficina" | Coordenadas de `config.json` fuera de la oficina (§8). |
 | "Acciones bloqueadas por kill switch" | `kill_switch` está en `true` en `config.json`. Ponlo en `false`. |
