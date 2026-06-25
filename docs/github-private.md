@@ -1,8 +1,14 @@
-# Subir a GitHub privado
+# GitHub privado
 
-El repo puede subirse a GitHub, pero nunca debe incluir secretos.
+> **Estado actual:** el repo YA está en GitHub privado:
+> `https://github.com/jesusgascon/sesame-fichaje-bot` (remoto `origin`, rama **`master`**).
+> Esta guía sirve para (a) comprobar antes de cada push que no se cuela ningún secreto,
+> y (b) reconfigurar el remoto si clonas en otra máquina. **No** vuelvas a ejecutar
+> `git remote add` ni `git branch -M main`: cambiaría la rama y rompería el upstream.
 
-## Antes de subir
+El repo nunca debe incluir secretos.
+
+## Antes de cada push
 
 Comprobar estado:
 
@@ -18,48 +24,30 @@ Debe aparecer como ignorado:
 !! dry_state.json
 ```
 
-Buscar posibles secretos en ficheros versionables:
+Buscar posibles secretos en ficheros versionables (usa `git grep`, que solo mira lo
+trackeado; si tienes `rg` instalado, vale igual):
 
 ```bash
-rg -n "USID=|telegram_token|sesame_token|usid|csid|authorized_chat_ids" \
-  --glob '!config.json' \
-  --glob '!audit.jsonl' \
-  --glob '!dry_state.json'
+git grep -n -E "USID=|telegram_token|sesame_token|usid|csid|authorized_chat_ids"
 ```
 
 Es normal que salgan referencias en docs o plantillas, pero no valores reales.
 
-## Crear repo privado
+## Push del día a día
 
-Opcion desde la web:
-
-1. Entra en GitHub.
-2. Crea un repositorio nuevo.
-3. Nombre sugerido:
-
-```text
-sesame-fichaje-bot
-```
-
-4. Visibilidad: `Private`.
-5. No añadas README, .gitignore ni licencia desde GitHub, porque ya existen localmente.
-
-## Conectar remoto
-
-Ejemplo:
+El remoto ya está configurado. Con permiso explícito de Jesús:
 
 ```bash
-git remote add origin git@github.com:TU_USUARIO/sesame-fichaje-bot.git
-git branch -M main
-git push -u origin main
+git push origin master
 ```
 
-Si usas HTTPS:
+## Reconectar remoto (solo si clonas en otra máquina)
+
+Si el remoto no existiera en una copia nueva:
 
 ```bash
-git remote add origin https://github.com/TU_USUARIO/sesame-fichaje-bot.git
-git branch -M main
-git push -u origin main
+git remote add origin https://github.com/jesusgascon/sesame-fichaje-bot.git
+git push -u origin master
 ```
 
 ## Que no se sube

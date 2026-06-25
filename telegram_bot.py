@@ -105,9 +105,14 @@ def rate_limited(chat_id) -> bool:
         t for t in RATE.get(chat_id, [])
         if now - t < RATE_LIMIT_WINDOW_SECONDS
     ]
+    # Si ya se alcanzó el límite, NO contamos este intento: así una ráfaga de
+    # mensajes bloqueados no renueva indefinidamente la ventana.
+    if len(recent) >= RATE_LIMIT_COUNT:
+        RATE[chat_id] = recent
+        return True
     recent.append(now)
     RATE[chat_id] = recent
-    return len(recent) > RATE_LIMIT_COUNT
+    return False
 
 
 def confirm_keyboard():
@@ -140,11 +145,7 @@ def is_authorized(chat_id):
 
 
 def start_text():
-    mode = "simulación"
-    if not sesame_client.DRY_RUN and not sesame_client.ALLOW_REAL:
-        mode = "estado real + acciones simuladas"
-    elif not sesame_client.DRY_RUN and sesame_client.ALLOW_REAL:
-        mode = "real"
+    mode = mode_label()
     return (
         "Hola. Soy tu bot de fichaje de Sesame.\n\n"
         f"Modo actual: {mode}.\n"
@@ -183,12 +184,7 @@ def mode_text(chat_id):
 
 
 def help_text():
-    if sesame_client.DRY_RUN:
-        mode = "simulacion"
-    elif not sesame_client.ALLOW_REAL:
-        mode = "estado real, acciones simuladas"
-    else:
-        mode = "real"
+    mode = mode_label()
     return (
         f"Bot de fichaje Sesame ({mode}).\n\n"
         "Comandos:\n"

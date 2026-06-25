@@ -15,7 +15,7 @@ alterna inicio/fin de jornada; pausar alterna inicio/fin de pausa (ver tabla en
 `state_machine.py`).
 
 ## Separación de credenciales (lo limpio)
-- **Dashboard** → token **admin** de un compañero → solo **ver** al equipo.
+- **Dashboard** → un token **admin** → solo **ver** al equipo.
 - **Este bot** → **TU propio token** de sesión → solo **fichar en tu usuario**, de
   modo que el fichaje queda registrado como tuyo (sin marca de "tercero").
 
@@ -71,9 +71,11 @@ Ver `PLAN.md`. Resumen:
   auditoría, kill switch, confirmar tipo de pausa, y **prueba real controlada**.
 
 ### Estado real
-En dry-run, `/estado` sigue usando `BOT_FAKE_STATE`. Para lectura real hay que rellenar
-`state_url_template` en `config.json` con el endpoint GET confirmado de Sesame. La
-plantilla admite `{base}` y `{employee_id}`.
+En dry-run, `/estado` sigue usando `BOT_FAKE_STATE`. Fuera de dry-run, el estado real se
+obtiene automáticamente de `GET /api/v3/employees/{id}/checks` (clasificando los tramos
+abiertos). `state_url_template` en `config.json` es un **override opcional** (admite
+`{base}` y `{employee_id}`) por si quisieras forzar otro endpoint GET; si lo dejas
+vacío/null, se usa el camino de `/checks`.
 
 ### Guardas locales
 `BOT_KILL_SWITCH=1` bloquea acciones. `audit_log`/`BOT_AUDIT_LOG` define el fichero
@@ -89,9 +91,10 @@ python3 check_config.py
 Para probar Sesame solo lectura cuando `csid`, `employee_id` y una forma de sesion
 esten rellenos en `config.json`:
 ```bash
-python3 probe_sesame_readonly.py
-python3 probe_sesame_state.py
-python3 probe_pause_candidates.py
+python3 probe.py state     # estado real actual
+python3 probe.py types     # tipos de pausa/asistencia asignados
+python3 probe.py checks    # volcado de los checks de hoy
+python3 probe.py pauses    # candidatos de id de pausa
 python3 set_telegram_commands.py
 ```
 

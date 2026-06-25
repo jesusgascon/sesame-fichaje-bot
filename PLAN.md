@@ -1,8 +1,15 @@
 # Plan — Bot de fichaje (Telegram → Sesame)
 
-> Rama independiente `feature/bot-fichaje`. **No se toca master.** Etapa nueva:
-> pasar de solo-lectura a **acciones de escritura** (fichar/pausar) sobre Sesame.
-> Nada se ejecuta en real hasta validarlo por fases y con aprobación de Jesús.
+> ⚠️ **DOCUMENTO HISTÓRICO (síntesis inicial de los 3 agentes).** Algunas premisas
+> quedaron superadas: (1) NO hay rama `feature/bot-fichaje`; todo el trabajo está en
+> `master`. (2) NO existe `server.py` ni un proxy en este repo: `sesame_client.py`
+> llama **directo** a `back-eu1` con tu propia sesión (ver §"Contrato CONFIRMADO").
+> (3) La "API pública oficial" se **descartó** (da 403, licencia sin API). La fuente
+> de verdad operativa es **`CLAUDE.md` §2–§7** y `README.md`; este PLAN se conserva
+> por el registro de decisiones y el detalle de seguridad.
+>
+> Etapa: pasar de solo-lectura a **acciones de escritura** (fichar/pausar) sobre
+> Sesame. Nada se ejecuta en real hasta validarlo por fases y con aprobación de Jesús.
 
 ## Decisiones tomadas (2026-06-24)
 - **Proceder** con plan por fases en esta rama.

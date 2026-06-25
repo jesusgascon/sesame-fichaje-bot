@@ -21,7 +21,7 @@ Requisitos:
 
 Comandos utiles:
   python3 check_config.py
-  python3 probe_sesame_state.py
+  python3 probe.py state
   Ctrl+C para parar si corre en terminal.
 
 Para dejarlo siempre encendido:
