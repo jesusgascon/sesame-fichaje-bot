@@ -34,9 +34,18 @@ Tests:
   ./run_tests.sh
       Suite con unittest (stdlib). Todo en dry-run: no toca red ni Sesame.
 
+Seguridad:
+  ./secure_perms.sh
+      Permisos 600 en config.json, links.json, audit.jsonl, dry_state.json.
+
+  ./arm_real.sh        (y ./arm_real.sh off)
+      Arma/desarma el 3er factor (ENABLE_REAL) para la prueba real controlada.
+      No ficha por si solo: ver docs/security.md.
+
 Telegram:
   /start       ayuda inicial
   /ayuda       ayuda completa
+  /vincular    vincula el chat (codigo OTP por consola)
   /modo        modo de seguridad
   /sesion      comprueba sesion Sesame
   /estado      estado real o simulado
@@ -52,6 +61,9 @@ Sesion Sesame:
 
 Autorizacion Telegram:
   docs/telegram-auth.md
+
+Modelo de seguridad (OTP, 3er factor, idempotencia):
+  docs/security.md
 
 Siri / Atajos iPhone:
   docs/siri-shortcuts.md

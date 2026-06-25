@@ -9,6 +9,9 @@ audit.jsonl
 audit*.jsonl
 dry_state.json
 links.json
+tg_offset
+ENABLE_REAL
+.locks/
 
 # Python
 __pycache__/

@@ -10,6 +10,7 @@ sobrevive a reinicios (a diferencia del antiguo dict en memoria).
 """
 
 import json
+import os
 from pathlib import Path
 
 
@@ -31,6 +32,11 @@ class LinkStore:
 
     def save(self):
         self.path.write_text(json.dumps(self._data, indent=2), encoding="utf-8")
+        # El binding es sensible: solo el dueño puede leerlo.
+        try:
+            os.chmod(self.path, 0o600)
+        except OSError:
+            pass
 
     def get(self, chat_id):
         return self._data.get(str(chat_id))
