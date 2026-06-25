@@ -22,7 +22,7 @@ import json
 import logging
 import os
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 import ssl
@@ -240,7 +240,14 @@ def get_current_state(employee_id: str, auth=None, state_url_template: str | Non
     cfg = load_config()
     template = state_url_template or get_setting("state_url_template", config=cfg)
     if not template:
-        return classify_state_from_checks(get_checks(employee_id, auth=auth or get_auth(cfg)))
+        # Ventana de AYER a HOY: un turno que cruza medianoche tiene su checkIn abierto
+        # archivado en el día de ayer. Si solo miráramos "hoy", a las 00:01 veríamos
+        # "fuera" y un `fichar` provocaría un segundo check-in (doble fichaje). Leer
+        # también ayer deja que classify_state_from_checks recoja el tramo abierto.
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        return classify_state_from_checks(
+            get_checks(employee_id, from_day=yesterday, auth=auth or get_auth(cfg))
+        )
 
     url = template.format(base=SESAME_BASE, employee_id=employee_id)
     payload = _real_get_json(url, auth or get_auth(cfg))
@@ -332,7 +339,7 @@ def find_break_candidates(payload) -> list[dict]:
 
 def _check_label(item):
     if item.get("isRemote"):
-        return "Teletrabajo"
+        return "Remoto"  # mismo término que muestra la web de Sesame
     if _present(item.get("workBreak")) or _present(item.get("workBreakId")):
         return _nested_label(item.get("workBreak")) or "Descanso"
     return _nested_label(item.get("workCheckType")) or "Oficina"

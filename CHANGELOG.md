@@ -3,6 +3,33 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es/). Este proyecto
 sigue versionado semántico.
 
+## [1.0.3] — 2026-06-25
+
+Pack de observabilidad y fiabilidad (segundo LLM council). Solo correcciones y
+añadidos de solo lectura; el contrato con Sesame y los gates no cambian.
+
+### Corregido
+- **Doble check-in cruzando medianoche**: el estado se lee de **ayer a hoy**, no solo
+  hoy. Antes, un turno abierto iniciado ayer no aparecía a las 00:01 → el bot creía que
+  estabas "fuera" y un `fichar` disparaba un segundo check-in sobre un endpoint NO
+  idempotente. Fix de una línea (ventana de lectura), sin tocar el camino de escritura.
+
+### Añadido
+- **Recibo read-after-write**: tras una acción real, el bot relee el estado y responde
+  con la verdad (`✅ … · Ahora: trabajando`) en vez de un `✅` a ciegas.
+- **Fallo de sesión en voz alta**: si el POST devuelve 401/403, avisa "tu sesión ha
+  caducado: el fichaje NO se registró" en lugar de un error genérico.
+- **`/salud`** (versión, modo, sesión de Sesame viva, días de `ENABLE_REAL`, kill switch)
+  y **`/version`** (versión + commit). Solo lectura.
+- `send()` reintenta **una vez** ante un fallo de red transitorio (solo `sendMessage`;
+  el POST de fichaje nunca pasa por ahí). Evita perder el mensaje de resultado.
+- Tests de regresión (`tests/test_observability_pack.py`); 64 en verde.
+
+### Cambiado
+- El trabajo remoto se etiqueta **"Remoto"** (igual que la web de Sesame), antes
+  "Teletrabajo".
+- `set_telegram_commands.py` registra `/salud`, `/version` y `/desvincular`.
+
 ## [1.0.2] — 2026-06-25
 
 Fix-pack de correctitud salido de una revisión multi-perspectiva (LLM council).

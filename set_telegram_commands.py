@@ -13,7 +13,10 @@ COMMANDS = [
     {"command": "hoy", "description": "Ver fichajes de hoy"},
     {"command": "sesion", "description": "Comprobar sesión Sesame"},
     {"command": "modo", "description": "Ver modo de seguridad"},
+    {"command": "salud", "description": "Versión, sesión Sesame y 3er factor"},
+    {"command": "version", "description": "Versión del bot desplegada"},
     {"command": "vincular", "description": "Vincular este chat (codigo OTP por consola)"},
+    {"command": "desvincular", "description": "Desvincular este chat"},
     {"command": "mi_chat_id", "description": "Ver tu chat_id para autorizarte"},
     {"command": "ayuda", "description": "Ayuda completa"},
 ]

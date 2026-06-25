@@ -35,6 +35,8 @@ import state_machine as sm
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("telegram_bot")
 
+BOT_VERSION = "1.0.3"
+
 CONFIG = sesame_client.load_config()
 TOKEN = os.environ.get("BOT_TELEGRAM_TOKEN") or CONFIG.get("telegram_token", "")
 API = f"https://api.telegram.org/bot{TOKEN}"
@@ -84,10 +86,20 @@ def send(chat_id, text, reply_markup=None):
     params = {"chat_id": chat_id, "text": text}
     if reply_markup is not None:
         params["reply_markup"] = json.dumps(reply_markup)
-    try:
-        _tg("sendMessage", **params)
-    except Exception as e:  # noqa: BLE001
-        log.error("sendMessage falló: %s", e)
+    # Reintento ÚNICO ante errores de red transitorios: un mensaje de resultado
+    # perdido es un fallo de fiabilidad (el usuario no ve la verdad y puede repetir
+    # el comando). Solo afecta a sendMessage; el POST de fichaje NUNCA pasa por aquí.
+    for attempt in (1, 2):
+        try:
+            _tg("sendMessage", **params)
+            return
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            log.warning("sendMessage intento %d falló: %s", attempt, e)
+            if attempt == 1:
+                time.sleep(1)
+        except Exception as e:  # noqa: BLE001
+            log.error("sendMessage falló (no reintentable): %s", e)
+            return
 
 
 def _fingerprint(value) -> str:
@@ -257,6 +269,63 @@ def mode_text(chat_id):
     )
 
 
+def _git_sha():
+    """Hash corto del commit desplegado (best-effort; vacío si no hay git)."""
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).resolve().parent,
+            capture_output=True, text=True, timeout=2,
+        )
+        return out.stdout.strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def version_text():
+    sha = _git_sha()
+    return f"Versión: {BOT_VERSION}" + (f" ({sha})" if sha else "")
+
+
+def enable_real_days_left():
+    """Días que le quedan a la ventana ENABLE_REAL (None si no está armado)."""
+    f = sesame_client.ENABLE_REAL_FILE
+    if not f.exists():
+        return None
+    try:
+        left = sesame_client.ENABLE_REAL_TTL - (time.time() - f.stat().st_mtime)
+    except OSError:
+        return None
+    return left / 86400.0
+
+
+def salud_text(chat_id):
+    """Chequeo de salud: versión, modo, token vivo y ventana del 3er factor.
+    Solo lecturas; nunca ficha."""
+    lines = [version_text(), f"Modo: {mode_label()}"]
+    lines.append(f"Chat vinculado (OTP): {'sí' if LINKS.get(chat_id) else 'no'}")
+    if sesame_client.DRY_RUN:
+        lines.append("Sesión Sesame: no aplica (simulación).")
+    else:
+        employee_id = resolve_employee_id(chat_id)
+        if not employee_id:
+            lines.append("Sesión Sesame: sin empleado vinculado (usa /vincular).")
+        else:
+            try:
+                state = sesame_client.get_current_state(employee_id)
+                lines.append(f"Sesión Sesame: OK · estado {state_label(state)}")
+            except Exception:  # noqa: BLE001
+                lines.append("Sesión Sesame: ⚠️ no conectada (¿token caducado? recaptúralo).")
+    days = enable_real_days_left()
+    if days is None:
+        lines.append("ENABLE_REAL: no armado")
+    else:
+        lines.append(f"ENABLE_REAL: {'vigente' if days > 0 else 'caducado'} ({days:.1f} días)")
+    lines.append(f"Kill switch: {'activo' if kill_switch_enabled() else 'apagado'}")
+    return "\n".join(lines)
+
+
 def help_text():
     mode = mode_label()
     return (
@@ -268,6 +337,8 @@ def help_text():
         "- /hoy: muestra los fichajes de hoy.\n"
         "- /sesion: comprueba si la sesion de Sesame sigue viva.\n"
         "- /modo: muestra modo actual y guardas activas.\n"
+        "- /salud: versión, sesión de Sesame y ventana del 3er factor.\n"
+        "- /version: versión del bot desplegada.\n"
         "- /mi_chat_id: muestra tu chat_id para autorizar este chat.\n"
         "- /reset: reinicia el estado simulado a fuera (solo pruebas).\n"
         "- /vincular: vincula este chat con tu usuario (codigo OTP por consola).\n"
@@ -407,14 +478,30 @@ def run_plan(chat_id, employee_id, plan, command=None, expected_state=None, rech
 
     if results and failed is None:
         audit("execute_plan_ok", chat_id, employee_id, actions=plan.actions, statuses=statuses)
-        return send(chat_id, "✅ " + plan.description, remove_keyboard())
+        # Recibo read-after-write: confirmamos releyendo el estado real de Sesame, en
+        # vez de fiarnos de un "✅" a ciegas. El usuario ve la verdad de lo que quedó.
+        try:
+            receipt = f"✅ {plan.description}.\nAhora: {state_label(get_state(employee_id))}."
+        except Exception:  # noqa: BLE001
+            receipt = f"✅ {plan.description}.\n(No pude confirmar el estado; revisa con /estado.)"
+        return send(chat_id, receipt, remove_keyboard())
 
+    err = str((failed or {}).get("error", ""))
     audit(
         "execute_plan_partial", chat_id, employee_id,
         actions=plan.actions, done=done,
         failed=(failed or {}).get("action"), statuses=statuses,
-        error=str((failed or {}).get("error", ""))[:200],
+        error=err[:200],
     )
+    # Token/sesión caducada: fallar EN VOZ ALTA. El peor caso es creer que has fichado
+    # y no haberlo hecho.
+    if "401" in err or "403" in err:
+        return send(
+            chat_id,
+            "⚠️ Tu sesión de Sesame ha caducado: el fichaje NO se registró.\n"
+            "Recaptura el token (usid/csid/esid) en config.json y reinicia el bot.",
+            remove_keyboard(),
+        )
     try:
         state_txt = f"\nEstado actual en Sesame: {state_label(get_state(employee_id))}."
     except Exception:  # noqa: BLE001
@@ -491,6 +578,12 @@ def handle(chat_id, text):
     if t not in PUBLIC_COMMANDS and not is_authorized(chat_id):
         audit("blocked_unauthorized_chat", chat_id)
         return send(chat_id, "Chat no autorizado. Usa /mi_chat_id y añade ese id a config.json.")
+
+    # Diagnóstico (solo lectura): no requieren binding, útiles cuando algo va mal.
+    if t == "/version":
+        return send(chat_id, version_text())
+    if t == "/salud":
+        return send(chat_id, salud_text(chat_id))
 
     # Vinculación por OTP: no requiere binding previo (lo crea). Rate-limit para
     # evitar fuerza bruta del código.

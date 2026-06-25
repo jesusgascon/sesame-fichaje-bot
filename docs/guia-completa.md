@@ -93,6 +93,8 @@ Puedes usarlos con `/` (menú) o sin barra donde se indica.
 | `/pausar` o `pausar` | Empieza o termina el descanso (toggle). |
 | `/sesion` | Comprueba si tu sesión de Sesame sigue viva. |
 | `/modo` | Modo de seguridad: autorizado, vinculado, lee real, ficha real, armado, kill switch. |
+| `/salud` | Versión, sesión de Sesame viva, días de `ENABLE_REAL`, kill switch. |
+| `/version` | Versión del bot desplegada (con commit). |
 | `/vincular` | Vincula este chat con tu usuario por OTP (código por consola). |
 | `/desvincular` | Desvincula este chat de tu usuario. |
 | `/mi_chat_id` | Muestra tu chat_id para autorizarte. |
