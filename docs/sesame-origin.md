@@ -6,8 +6,8 @@ El endpoint interno confirmado recibe este cuerpo:
 {
   "origin": "web",
   "coordinates": {
-    "latitude": 40.4168,
-    "longitude": -3.7038
+    "latitude": 41.6312893,
+    "longitude": -0.9101856
   },
   "workCheckTypeId": null
 }
@@ -25,23 +25,29 @@ No aparecera como Telegram, WhatsApp, tablet o app movil, porque Sesame no recib
 esos valores desde este bot. El bot llama al mismo backend web interno y declara
 `origin: "web"`.
 
-En la interfaz de Sesame lo esperable es que se vea como fichaje web o equivalente.
-La etiqueta exacta depende de como Sesame traduzca internamente `origin=web` en su
-UI. Esto se validara en la prueba real controlada.
+**Validado en real:** los fichajes del bot aparecen en Sesame como **Oficina** o
+**Remoto** segun las coordenadas (ver abajo), igual que la app oficial. No aparece
+ninguna marca de bot ni de Telegram.
 
-## Coordenadas
+## Coordenadas: Oficina vs Remoto
 
-El bot manda las coordenadas de `config.json`:
+Sesame decide **Oficina** o **Remoto** segun si las coordenadas caen dentro de la zona
+de tu oficina. El bot **no usa el GPS del movil**: siempre manda las coordenadas fijas
+de `config.json`:
 
 ```json
 "coordinates": {
-  "latitude": 40.4168,
-  "longitude": -3.7038
+  "latitude": 41.6312893,
+  "longitude": -0.9101856
 }
 ```
 
-Antes de produccion real hay que confirmar que esas coordenadas son correctas y
-aceptables para el uso previsto.
+- Coordenadas dentro de la oficina -> fichajes como **Oficina**.
+- Otras coordenadas -> **Remoto**.
+
+Para que salga "Oficina", pon las coordenadas de tu oficina (puedes leerlas de tus
+fichajes "Oficina" reales). Si mezclas oficina y teletrabajo, las coordenadas fijas no
+lo distinguen solas. Ver `docs/guia-completa.md` §8.
 
 ## Importante
 

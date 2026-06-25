@@ -32,8 +32,13 @@ Uso recomendado ahora:
 
 ### Produccion real
 
-Todavia no esta habilitada. Aunque pongas variables de entorno, el codigo sigue
-bloqueando el POST real hasta hacer una prueba controlada y revisar las guardas.
+```bash
+./run_real.sh
+```
+
+Ficha de verdad. Aun asi, el POST real solo ocurre con los 3 factores armados
+(BOT_DRY_RUN=0 + BOT_ALLOW_REAL=1 + fichero ENABLE_REAL vigente) y el chat vinculado por
+OTP; si falta alguno, no ficha. Ver "Activar el modo real" mas abajo y `docs/security.md`.
 
 ## Ayuda en linea
 
@@ -136,10 +141,10 @@ systemctl --user restart sesame-fichaje-bot.service
 
 Ver detalles en `docs/sesame-session.md`.
 
-## Prueba real controlada
+## Activar el modo real (validado en v1.0.0)
 
-No hacer hasta aprobarlo expresamente. El camino real exige 3 factores + binding OTP
-(ver `docs/security.md`). Procedimiento minimo:
+El modo real ya esta validado (fichar y pausar reales). El camino real exige 3 factores
++ binding OTP (ver `docs/security.md`). Procedimiento para armarlo / primera vez:
 
 1. `./secure_perms.sh` (permisos 600 en config y estado).
 2. `/sesion` en verde y confirmar que estas realmente fuera de jornada.
