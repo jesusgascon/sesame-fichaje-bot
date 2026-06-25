@@ -125,8 +125,7 @@ Ficheros (todos en la raíz):
   `config.json`, backoff exponencial en el loop de red, errores por-update aislados.
 - **Docs añadidos:** `docs/security.md` (modelo de seguridad Fase 2/D), `docs/sesame-session.md`,
   `docs/telegram-auth.md`, `docs/telegram-usage.md`, `docs/sesame-origin.md`,
-  `docs/always-on.md`, `docs/production-runbook.md`, `docs/siri-shortcuts.md`,
-  `docs/github-private.md`.
+  `docs/always-on.md`, `docs/production-runbook.md`, `docs/siri-shortcuts.md`.
 - **Bloque D (seguridad):** `arm_real.sh` (arma/desarma `ENABLE_REAL` con caducidad),
   `secure_perms.sh` (chmod 600). OTP de `/vincular` por consola, gate R1 (employeeId
   solo del binding en real), idempotencia (flock + `tg_offset`), auditoría que aborta

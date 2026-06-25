@@ -161,8 +161,6 @@ Guias operativas:
   fichaje en Sesame.
 - [`docs/siri-shortcuts.md`](docs/siri-shortcuts.md) — como preparar Atajos/Siri
   para abrir el bot y usar comandos slash.
-- [`docs/github-private.md`](docs/github-private.md) — como subirlo a un repositorio
-  privado sin secretos.
 
 ## Cumplimiento
 Solo uso legítimo: reflejar **tu jornada real** (como la app de Sesame). No fichar a

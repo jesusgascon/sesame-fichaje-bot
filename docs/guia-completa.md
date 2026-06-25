@@ -304,4 +304,3 @@ así que no hay que revincular ni rearmar en cada arranque. Recuerda **rearmar
 - `docs/sesame-origin.md` — cómo se ve el origen del fichaje en Sesame.
 - `docs/siri-shortcuts.md` — Atajos/Siri en iPhone.
 - `docs/always-on.md` — servicio systemd siempre encendido.
-- `docs/github-private.md` — manejo del repositorio privado sin secretos.
