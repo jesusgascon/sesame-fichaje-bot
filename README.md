@@ -8,9 +8,11 @@ aquí se **escribe** en Sesame, así que vive aparte para aislar el riesgo.
 > **[`docs/guia-completa.md`](docs/guia-completa.md)** (comandos, puesta en marcha,
 > pausas, herramientas, resolución de problemas).
 
-> ✅ **Modo real validado.** El bot ficha de verdad (jornadas y pausas) en tu usuario.
-> Arranca **seguro por defecto**: el camino real exige 3 factores y está **desarmado**
-> hasta que lo armes (ver "Interruptores de seguridad" y `docs/security.md`).
+> ✅ **v1.0.0 — en producción.** El bot ficha de verdad (jornadas y pausas) en tu
+> usuario y corre como **servicio systemd** (siempre encendido). Modo real validado
+> en real (2026-06-25). Arranca **seguro por defecto**: el camino real exige 3 factores
+> y está **desarmado** hasta que lo armes (ver "Interruptores de seguridad" y
+> `docs/security.md`).
 
 ## Idea
 Desde tu móvil escribes al bot `fichar` o `pausar` y el bot registra la acción en
@@ -28,14 +30,14 @@ El fichaje se dirige por el `employeeId` de la URL
 
 ## Piezas
 - `state_machine.py` — lógica pura fichar/pausar. Pruébala: `python3 state_machine.py`.
-- `sesame_client.py` — ejecuta las acciones (dry-run por defecto), directo a
-  `back-eu1.sesametime.com` con tu token (Fase 2). Incluye lectura GET configurable
-  para obtener el estado actual cuando se confirme el endpoint.
+- `sesame_client.py` — ejecuta las acciones (dry-run por defecto; modo real armado en
+  producción), directo a `back-eu1.sesametime.com` con tu token. Lee el estado real de
+  `GET /api/v3/employees/{id}/checks` (endpoint confirmado).
 - `telegram_bot.py` — bot de Telegram (long-polling, sin dependencias).
   Mantiene confirmaciones con botones SI/NO y caducidad, rate-limit, lock por
   empleado, kill switch y auditoría local JSONL sin secretos.
-- `link_store.py` — almacén persistente (JSON) del vínculo chat↔empleado. Costura
-  para el emparejamiento cifrado por OTP de la Fase 2.
+- `link_store.py` — almacén persistente (JSON) del vínculo chat↔empleado, emparejado
+  por OTP desde consola (`/vincular`).
 - `config.example.json` — plantilla de config (cópiala a `config.json`, gitignored).
 
 ## Tests (sin red)
@@ -44,7 +46,9 @@ El fichaje se dirige por el `employeeId` de la URL
                       # LinkStore y flujo del bot con send inyectado. Todo en dry-run.
 ```
 
-## Probar en simulación (sin red)
+## Probar en simulación (sin red, opcional)
+> El proyecto está en producción en modo real. Esta sección es solo para desarrollo/pruebas locales.
+
 ```bash
 python3 state_machine.py        # tabla de decisiones
 BOT_FAKE_STATE=working BOT_TEST_EMPLOYEE_ID=demo python3 -c \
@@ -59,7 +63,7 @@ Ayuda rapida:
 ./run_real_state_dry_actions.sh --help
 ```
 
-## Arrancar el bot en Telegram, en simulacion
+## Arrancar el bot en Telegram (simulacion, para pruebas)
 1. Crea el bot con `@BotFather` y copia el token.
 2. Pega el token en `config.json`, campo `telegram_token`.
 3. Ejecuta:
@@ -67,9 +71,12 @@ Ayuda rapida:
 ./run_dry_run.sh
 ```
 
-Mientras esté abierto ese proceso, el bot responderá en Telegram. Si cierras la
-terminal o apagas el ordenador, el bot deja de responder. Para dejarlo siempre
-encendido lo convertiremos en servicio cuando el flujo de prueba esté validado.
+Mientras esté abierto ese proceso, el bot responderá en Telegram en dry-run. Si cierras
+la terminal o apagas el ordenador, el bot deja de responder.
+
+**En producción** el bot ya corre como **servicio systemd** (siempre encendido, modo
+real). Para arrancar/parar/ver logs en producción, ver
+[`docs/production-runbook.md`](docs/production-runbook.md) y `docs/always-on.md`.
 
 ## Interruptores de seguridad
 El modo real exige **3 factores a la vez** — `BOT_DRY_RUN=0`, `BOT_ALLOW_REAL=1` y el
