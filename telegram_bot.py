@@ -8,15 +8,22 @@ Esqueleto del bot de Telegram para fichar/pausar (DRY-RUN).
   + OTP verificado contra el teléfono de tu perfil de Sesame, y almacén cifrado.
 """
 
+import contextlib
 import json
 import logging
 import os
 import hashlib
+import secrets
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+try:
+    import fcntl  # POSIX: lock de fichero entre procesos/reinicios
+except ImportError:  # pragma: no cover  (no-POSIX)
+    fcntl = None
 
 import link_store
 import sesame_client
@@ -30,18 +37,22 @@ TOKEN = os.environ.get("BOT_TELEGRAM_TOKEN") or CONFIG.get("telegram_token", "")
 API = f"https://api.telegram.org/bot{TOKEN}"
 
 LINKS_FILE = Path(os.environ.get("BOT_LINKS_FILE", CONFIG.get("links_file", "links.json")))
-LINKS = link_store.LinkStore(LINKS_FILE)   # chat_id -> employeeId (persistente; Fase 2: OTP + cifrado)
+LINKS = link_store.LinkStore(LINKS_FILE)   # chat_id -> employeeId (persistente; binding por OTP)
 PENDING = {}        # chat_id -> dict(command, plan, state, expires_at)
+PENDING_OTP = {}    # chat_id -> dict(code, expires_at) para /vincular
 FAKE_STATE = os.environ.get("BOT_FAKE_STATE", "out")  # estado simulado para dry-run
 DRY_STATE = {}       # employeeId -> estado simulado mientras corre el proceso
-LOCKS = set()       # employeeId en ejecución
+LOCKS = set()       # employeeId en ejecución (lock en memoria; en real se añade flock)
 RATE = {}           # chat_id -> [timestamps]
 
+OTP_TTL_SECONDS = int(os.environ.get("BOT_OTP_TTL_SECONDS", "300"))
+LOCK_DIR = Path(os.environ.get("BOT_LOCK_DIR", CONFIG.get("lock_dir", ".locks")))
 CONFIRM_TTL_SECONDS = int(os.environ.get("BOT_CONFIRM_TTL_SECONDS", "120"))
 RATE_LIMIT_COUNT = int(os.environ.get("BOT_RATE_LIMIT_COUNT", "30"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("BOT_RATE_LIMIT_WINDOW_SECONDS", "60"))
 AUDIT_LOG = Path(os.environ.get("BOT_AUDIT_LOG", CONFIG.get("audit_log", "audit.jsonl")))
 DRY_STATE_FILE = Path(os.environ.get("BOT_DRY_STATE_FILE", CONFIG.get("dry_state_file", "dry_state.json")))
+OFFSET_FILE = Path(os.environ.get("BOT_OFFSET_FILE", CONFIG.get("offset_file", "tg_offset")))
 
 STATE_LABELS = {
     sm.OUT: "fuera",
@@ -57,7 +68,7 @@ ACTION_LABELS = {
     sm.PAUSE_END: "terminar descanso",
 }
 
-PUBLIC_COMMANDS = {"/start", "/ayuda", "/vincular", "/mi_chat_id"}
+PUBLIC_COMMANDS = {"/start", "/ayuda", "/mi_chat_id"}
 
 
 def _tg(method, **params):
@@ -80,7 +91,19 @@ def _fingerprint(value) -> str:
     return hashlib.sha256(str(value).encode()).hexdigest()[:16]
 
 
-def audit(event: str, chat_id=None, employee_id=None, **fields):
+def _secure_chmod(path):
+    """Fuerza permisos 600 (solo el dueño) en ficheros con datos sensibles."""
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def audit(event: str, chat_id=None, employee_id=None, **fields) -> bool:
+    """Registra un evento en el JSONL append-only. Devuelve True si se escribió.
+
+    Nunca guarda secretos ni ids en claro (chat/employee van como sha256[:16]).
+    """
     record = {
         "ts": int(time.time()),
         "event": event,
@@ -91,8 +114,43 @@ def audit(event: str, chat_id=None, employee_id=None, **fields):
     try:
         with AUDIT_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        _secure_chmod(AUDIT_LOG)
+        return True
     except Exception as e:  # noqa: BLE001
         log.error("audit falló: %s", e)
+        return False
+
+
+@contextlib.contextmanager
+def employee_lock(employee_id):
+    """Lock por empleado. En memoria + flock entre procesos/reinicios (si hay POSIX).
+
+    Evita acciones solapadas aunque haya dos instancias del bot o un reinicio.
+    Lanza BusyEmployee si ya está bloqueado.
+    """
+    if employee_id in LOCKS:
+        raise BusyEmployee(employee_id)
+    LOCKS.add(employee_id)
+    lock_file = None
+    try:
+        if fcntl is not None:
+            LOCK_DIR.mkdir(parents=True, exist_ok=True)
+            lock_file = (LOCK_DIR / f"{_fingerprint(employee_id)}.lock").open("w")
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                raise BusyEmployee(employee_id) from exc
+        yield
+    finally:
+        if lock_file is not None:
+            with contextlib.suppress(Exception):
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
+                lock_file.close()
+        LOCKS.discard(employee_id)
+
+
+class BusyEmployee(Exception):
+    """El empleado ya tiene una acción en curso (lock tomado)."""
 
 
 def kill_switch_enabled() -> bool:
@@ -182,11 +240,16 @@ def mode_text(chat_id):
     allowed = "sí" if is_authorized(chat_id) else "no"
     real_state = "sí" if not sesame_client.DRY_RUN else "no"
     real_actions = "sí" if sesame_client.ALLOW_REAL else "no"
+    bound = "sí" if LINKS.get(chat_id) else "no"
+    armed, reason = sesame_client.real_path_armed()
+    armed_txt = "sí" if armed else f"no ({reason})"
     return (
         f"Modo actual: {mode_label()}.\n"
         f"- Chat autorizado: {allowed}\n"
+        f"- Chat vinculado (OTP): {bound}\n"
         f"- Lee estado real de Sesame: {real_state}\n"
         f"- Ejecuta fichajes reales: {real_actions}\n"
+        f"- Camino real armado (3er factor): {armed_txt}\n"
         f"- Kill switch: {'activo' if kill_switch_enabled() else 'apagado'}"
     )
 
@@ -204,7 +267,7 @@ def help_text():
         "- /modo: muestra modo actual y guardas activas.\n"
         "- /mi_chat_id: muestra tu chat_id para autorizar este chat.\n"
         "- /reset: reinicia el estado simulado a fuera (solo pruebas).\n"
-        "- /vincular: pendiente; enlazara tu Telegram con tu empleado.\n"
+        "- /vincular: vincula este chat con tu usuario (codigo OTP por consola).\n"
         "- /ayuda: muestra esta ayuda.\n\n"
         "Estados:\n"
         "- fuera: sin jornada abierta.\n"
@@ -284,10 +347,6 @@ def run_plan(chat_id, employee_id, plan, command=None, expected_state=None):
         audit("blocked_kill_switch", chat_id, employee_id, actions=plan.actions)
         return send(chat_id, "Acciones bloqueadas por kill switch.")
 
-    if employee_id in LOCKS:
-        audit("blocked_lock", chat_id, employee_id, actions=plan.actions)
-        return send(chat_id, "Ya hay una acción en curso para este empleado. Prueba de nuevo en unos segundos.")
-
     if command and expected_state is not None:
         fresh_state = get_state(employee_id)
         fresh_plan = sm.plan_actions(fresh_state, command)
@@ -303,12 +362,22 @@ def run_plan(chat_id, employee_id, plan, command=None, expected_state=None):
             )
             return send(chat_id, f"El estado cambió a {state_label(fresh_state)}. No ejecuto una acción antigua.")
 
-    LOCKS.add(employee_id)
-    audit("execute_plan_start", chat_id, employee_id, actions=plan.actions, dry_run=sesame_client.DRY_RUN)
+    real = not sesame_client.DRY_RUN and sesame_client.ALLOW_REAL
+    # En real, si no podemos dejar traza del intento, NO ejecutamos (un fichaje sin
+    # auditar es peor que no fichar).
+    started = audit("execute_plan_start", chat_id, employee_id, actions=plan.actions, dry_run=sesame_client.DRY_RUN)
+    if real and not started:
+        return send(chat_id, "No puedo registrar la auditoría; no ejecuto el fichaje real.")
+
     try:
-        results = sesame_client.execute_plan(plan.actions, employee_id)
-    finally:
-        LOCKS.discard(employee_id)
+        with employee_lock(employee_id):
+            results = sesame_client.execute_plan(plan.actions, employee_id)
+    except BusyEmployee:
+        audit("blocked_lock", chat_id, employee_id, actions=plan.actions)
+        return send(chat_id, "Ya hay una acción en curso para este empleado. Prueba de nuevo en unos segundos.")
+    except Exception as e:  # noqa: BLE001
+        audit("execute_plan_error", chat_id, employee_id, actions=plan.actions, error=str(e)[:200])
+        return send(chat_id, f"No se pudo completar: {e}", remove_keyboard())
 
     if results and results[0].get("dry_run"):
         new_state = apply_dry_run_state(employee_id, plan.actions)
@@ -323,8 +392,58 @@ def run_plan(chat_id, employee_id, plan, command=None, expected_state=None):
             remove_keyboard(),
         )
     else:
-        audit("execute_plan_ok", chat_id, employee_id, actions=plan.actions)
+        statuses = [r.get("status") for r in results]
+        audit("execute_plan_ok", chat_id, employee_id, actions=plan.actions, statuses=statuses)
         send(chat_id, "✅ " + plan.description, remove_keyboard())
+
+
+def resolve_employee_id(chat_id):
+    """Resuelve el employeeId del chat.
+
+    Gate R1: en modo REAL el employeeId sale SOLO del binding verificado por OTP,
+    nunca de config ni del mensaje. En dry-run/desarrollo se admite el fallback a
+    BOT_TEST_EMPLOYEE_ID / config para poder probar sin vincular.
+    """
+    bound = LINKS.get(chat_id)
+    if not sesame_client.DRY_RUN and sesame_client.ALLOW_REAL:
+        return bound
+    return bound or os.environ.get("BOT_TEST_EMPLOYEE_ID") or CONFIG.get("employee_id")
+
+
+def cmd_vincular(chat_id):
+    """Inicia el emparejamiento: genera un OTP que SOLO se imprime en la consola del
+    servidor (segundo factor fuera de banda) y queda pendiente de confirmación."""
+    employee_id = CONFIG.get("employee_id")
+    if not employee_id:
+        return send(chat_id, "No hay employee_id en config.json para vincular.")
+    code = f"{secrets.randbelow(1000000):06d}"
+    PENDING_OTP[chat_id] = {"code": code, "expires_at": time.time() + OTP_TTL_SECONDS}
+    # A la CONSOLA/journald (solo lo ve quien opera el servidor), no a Telegram.
+    log.warning("[VINCULACION] Código para el chat %s: %s (caduca en %ss)",
+                chat_id, code, OTP_TTL_SECONDS)
+    audit("otp_issued", chat_id)
+    return send(
+        chat_id,
+        "He impreso un código de vinculación en la consola del servidor (solo tú la "
+        "ves). Escríbelo aquí para vincular este chat con tu usuario de Sesame.",
+    )
+
+
+def cmd_otp_code(chat_id, code):
+    """Verifica el OTP y, si es correcto, persiste el binding chat -> employeeId."""
+    otp = PENDING_OTP.pop(chat_id, None)
+    if not otp:
+        return send(chat_id, "No hay vinculación en curso. Usa /vincular.")
+    if time.time() > otp["expires_at"]:
+        audit("otp_expired", chat_id)
+        return send(chat_id, "El código ha caducado. Usa /vincular otra vez.")
+    if not secrets.compare_digest(code, otp["code"]):
+        audit("otp_mismatch", chat_id)
+        return send(chat_id, "Código incorrecto. Usa /vincular para generar uno nuevo.")
+    employee_id = CONFIG.get("employee_id")
+    LINKS.set(chat_id, employee_id)
+    audit("otp_bound", chat_id, employee_id)
+    return send(chat_id, "✅ Vinculado. Este chat ya puede fichar en tu usuario de Sesame.")
 
 
 def handle(chat_id, text):
@@ -336,18 +455,22 @@ def handle(chat_id, text):
         return send(chat_id, help_text())
     if t == "/mi_chat_id":
         return send(chat_id, f"Tu chat_id es: {chat_id}\nAñádelo a authorized_chat_ids en config.json.")
-    if t == "/vincular":
-        return send(chat_id, "Vinculación pendiente. De momento usa /mi_chat_id y authorized_chat_ids en config.json.")
 
     if t not in PUBLIC_COMMANDS and not is_authorized(chat_id):
         audit("blocked_unauthorized_chat", chat_id)
         return send(chat_id, "Chat no autorizado. Usa /mi_chat_id y añade ese id a config.json.")
 
-    employee_id = (
-        LINKS.get(chat_id)
-        or os.environ.get("BOT_TEST_EMPLOYEE_ID")
-        or CONFIG.get("employee_id")
-    )
+    # Vinculación por OTP: no requiere binding previo (lo crea). Rate-limit para
+    # evitar fuerza bruta del código.
+    if t == "/vincular" or (chat_id in PENDING_OTP and t.isdigit()):
+        if rate_limited(chat_id):
+            audit("blocked_rate_limit", chat_id)
+            return send(chat_id, "Demasiadas peticiones seguidas. Espera un momento.")
+        if t == "/vincular":
+            return cmd_vincular(chat_id)
+        return cmd_otp_code(chat_id, t)
+
+    employee_id = resolve_employee_id(chat_id)
     if not employee_id:
         return send(chat_id, "No estás vinculado. Usa /vincular.")
 
@@ -412,12 +535,24 @@ def handle(chat_id, text):
     send(chat_id, "No te he entendido. Usa: /fichar · /pausar · /estado")
 
 
+def load_offset() -> int:
+    try:
+        return int(OFFSET_FILE.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def save_offset(offset):
+    with contextlib.suppress(OSError):
+        OFFSET_FILE.write_text(str(offset), encoding="utf-8")
+
+
 def main():
     if not TOKEN or TOKEN == "PEGA_AQUI_EL_TOKEN_DE_BOTFATHER":
         raise SystemExit("Configura BOT_TELEGRAM_TOKEN (de @BotFather) para arrancar.")
     load_dry_state()
     log.info("Bot arrancado. DRY_RUN=%s ALLOW_REAL=%s", sesame_client.DRY_RUN, sesame_client.ALLOW_REAL)
-    offset = 0
+    offset = load_offset()
     backoff = 1
     while True:
         try:
@@ -425,6 +560,9 @@ def main():
             backoff = 1  # éxito: reinicia el backoff
             for u in upd.get("result", []):
                 offset = u["update_id"] + 1
+                # Marcamos el update como procesado ANTES de actuar: ante un crash se
+                # pierde el mensaje (reintentable) en vez de duplicar un fichaje.
+                save_offset(offset)
                 msg = u.get("message") or {}
                 chat = (msg.get("chat") or {}).get("id")
                 if chat is None:

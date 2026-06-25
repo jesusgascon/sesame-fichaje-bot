@@ -68,15 +68,18 @@ terminal o apagas el ordenador, el bot deja de responder. Para dejarlo siempre
 encendido lo convertiremos en servicio cuando el flujo de prueba esté validado.
 
 ## Interruptores de seguridad
-El modo real exige **ambos**: `BOT_DRY_RUN=0` **y** `BOT_ALLOW_REAL=1`. Y aun así
-el camino real lanza error hasta la Fase 2.
+El modo real exige **3 factores a la vez** — `BOT_DRY_RUN=0`, `BOT_ALLOW_REAL=1` y el
+fichero `ENABLE_REAL` vigente (`./arm_real.sh`) — **y** que el chat esté vinculado por
+OTP (`/vincular`). Desarmado por defecto: sin todo eso, no ficha. Detalle completo en
+[`docs/security.md`](docs/security.md). Asegura permisos con `./secure_perms.sh`.
 
 ## Estado / plan
-Ver `PLAN.md`. Resumen:
+Ver `PLAN.md` y `docs/security.md`. Resumen:
 - ✅ Viabilidad confirmada (endpoint interno acepta la sesión).
-- ✅ Esqueleto dry-run (este repo).
-- ⏳ Fase 2: emparejamiento OTP + almacén cifrado, `get_state` real, idempotencia,
-  auditoría, kill switch, confirmar tipo de pausa, y **prueba real controlada**.
+- ✅ Dry-run + `get_state` real + tests (stdlib).
+- ✅ Fase 2/seguridad: emparejamiento OTP (consola), gate R1, idempotencia (flock +
+  dedupe), auditoría endurecida, kill switch en caliente, permisos 600, 3er factor.
+- ⏳ Pendiente: confirmar tipo de pausa y la **primera prueba real controlada**.
 
 ### Estado real
 En dry-run, `/estado` sigue usando `BOT_FAKE_STATE`. Fuera de dry-run, el estado real se
@@ -134,6 +137,8 @@ Para dejar el bot siempre encendido como servicio de usuario, ver
 
 Guias operativas:
 
+- [`docs/security.md`](docs/security.md) — modelo de seguridad: OTP, 3er factor,
+  gate R1, idempotencia, auditoria, permisos 600 y checklist de prueba real.
 - [`docs/production-runbook.md`](docs/production-runbook.md) — arrancar, parar,
   servicio, logs y camino a prueba real.
 - [`docs/telegram-usage.md`](docs/telegram-usage.md) — como abrir y usar el bot en

@@ -21,6 +21,7 @@ Endpoint interno confirmado:
 import json
 import logging
 import os
+import time
 from datetime import date, datetime
 from pathlib import Path
 import ssl
@@ -33,6 +34,12 @@ SESAME_BASE = os.environ.get("BOT_SESAME_BASE", "https://back-eu1.sesametime.com
 DRY_RUN = os.environ.get("BOT_DRY_RUN", "1") != "0"
 ALLOW_REAL = os.environ.get("BOT_ALLOW_REAL", "0") == "1"
 CONFIG_PATH = Path(os.environ.get("BOT_CONFIG", "config.json"))
+
+# Tercer factor para armar el camino REAL (además de BOT_DRY_RUN=0 y BOT_ALLOW_REAL=1):
+# un fichero ENABLE_REAL con caducidad. `touch ENABLE_REAL` abre una ventana de
+# ENABLE_REAL_TTL segundos; pasado ese tiempo, el camino real vuelve a quedar desarmado.
+ENABLE_REAL_FILE = Path(os.environ.get("BOT_ENABLE_REAL_FILE", "ENABLE_REAL"))
+ENABLE_REAL_TTL = int(os.environ.get("BOT_ENABLE_REAL_TTL_SECONDS", "3600"))
 
 # Tipo de "pausa" en Sesame (de GET /api/v3/employees/{id}/assigned-work-check-types).
 # Se resuelve vía get_setting("pause_check_type_id"), que ya cubre env+config.
@@ -133,22 +140,59 @@ def _body(coords, work_check_type_id):
             "workCheckTypeId": work_check_type_id}
 
 
+def enable_real_token_valid() -> tuple[bool, str]:
+    """Tercer factor: el fichero ENABLE_REAL debe existir y no estar caducado.
+
+    Devuelve (ok, motivo). `touch ENABLE_REAL` abre una ventana de ENABLE_REAL_TTL
+    segundos; pasada, vuelve a quedar desarmado. Es un acto deliberado, no un env
+    var olvidado.
+    """
+    if not ENABLE_REAL_FILE.exists():
+        return False, "falta el fichero ENABLE_REAL"
+    try:
+        age = time.time() - ENABLE_REAL_FILE.stat().st_mtime
+    except OSError as e:
+        return False, f"no se puede leer ENABLE_REAL: {e}"
+    if age > ENABLE_REAL_TTL:
+        return False, f"ENABLE_REAL caducado (hace {int(age)}s, máximo {ENABLE_REAL_TTL}s)"
+    return True, ""
+
+
+def real_path_armed() -> tuple[bool, str]:
+    """¿Está armado el camino REAL? Exige los 3 factores. Devuelve (ok, motivo)."""
+    if DRY_RUN:
+        return False, "dry-run"
+    if not ALLOW_REAL:
+        return False, "BOT_ALLOW_REAL=0"
+    return enable_real_token_valid()
+
+
 def execute_action(action: str, employee_id: str, coords=None, auth=None) -> dict:
     """Ejecuta UNA acción atómica. En dry-run solo registra y simula.
-    `auth` = dict con el token/csid de SESIÓN DEL PROPIO usuario (Fase 2)."""
+    `auth` = dict con el token/csid de SESIÓN DEL PROPIO usuario."""
     path, wct = _resolve_endpoint(action)
     url = f"{SESAME_BASE}/api/v3/employees/{employee_id}/{path}"
     body = _body(coords, wct)
 
     if DRY_RUN or not ALLOW_REAL:
-        log.info("DRY-RUN: NO se llama a Sesame. Se haría: POST %s  body=%s",
-                 url, json.dumps(body))
+        # Log redactado: ni coordenadas ni employeeId ni URL completa (RGPD / journald).
+        log.info("DRY-RUN: no se llama a Sesame. Acción=%s endpoint=%s", action, path)
         return {"dry_run": True, "action": action, "url": url, "body": body, "ok": True}
 
-    # --- Camino REAL (solo con BOT_DRY_RUN=0 y BOT_ALLOW_REAL=1) ---
-    # Deshabilitado a propósito hasta completar la Fase 2 (emparejamiento OTP +
-    # idempotencia + auditoría + kill switch + prueba controlada).
-    raise RuntimeError("Camino REAL no habilitado todavía (Fase 2). Mantén BOT_ALLOW_REAL=0.")
+    # --- Camino REAL: solo si los 3 factores están armados (gate del tercer factor). ---
+    armed, reason = real_path_armed()
+    if not armed:
+        raise RuntimeError(
+            f"Camino REAL no armado: {reason}. Para una prueba controlada: "
+            f"`touch ENABLE_REAL` (ventana de {ENABLE_REAL_TTL}s) con BOT_DRY_RUN=0 y BOT_ALLOW_REAL=1."
+        )
+    if not coords or coords[0] is None or coords[1] is None:
+        raise RuntimeError("Faltan coordenadas válidas para el fichaje real.")
+
+    result = _real_post(url, body, auth or get_auth())
+    status = result.get("status")
+    return {"dry_run": False, "action": action, "status": status,
+            "ok": status is not None and 200 <= status < 300}
 
 
 def execute_plan(actions, employee_id, coords=None, auth=None) -> list:
@@ -431,8 +475,8 @@ def _real_get_json(url, auth):  # pragma: no cover  (depende de Sesame)
         with urllib.request.urlopen(req, context=ctx, timeout=15) as r:
             return json.loads(r.read().decode("utf-8", "replace"))
     except HTTPError as e:
-        body = e.read().decode("utf-8", "replace")
-        raise RuntimeError(f"Sesame GET falló: HTTP {e.code} {body[:300]}") from e
+        # No volcamos el body crudo de Sesame a la excepción/logs (puede llevar PII).
+        raise RuntimeError(f"Sesame GET falló: HTTP {e.code}") from e
 
 
 def _real_post(url, body, auth):  # pragma: no cover  (reservado Fase 2)

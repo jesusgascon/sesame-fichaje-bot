@@ -26,8 +26,12 @@ se aprueban juntos antes**.
 
 ## 1. Reglas duras (no las rompas)
 
-1. **NADA de fichajes reales todavía.** El bot está en **dry-run**. El camino real está
-   deshabilitado en código (lanza `RuntimeError`) hasta completar la Fase 2 de seguridad.
+1. **Ninguna prueba real hecha todavía.** El bot arranca en **dry-run**. El camino real
+   YA existe pero está **desarmado por defecto**: exige 3 factores simultáneos
+   (`BOT_DRY_RUN=0` + `BOT_ALLOW_REAL=1` + fichero `ENABLE_REAL` vigente, ver
+   `./arm_real.sh`) **y** un chat vinculado por OTP. Sin todo eso, `execute_action`
+   lanza error y no ficha. La **primera prueba real** requiere OK explícito de Jesús
+   (ver checklist en `docs/security.md`).
 2. **No commits/push sin permiso explícito** de Jesús (cada vez). El repo está en
    **GitHub PRIVADO** (`github.com/jesusgascon/sesame-fichaje-bot`, rama `master`).
    Publicar/pushear cambios requiere su OK explícito cada vez. Nunca subir secretos.
@@ -111,15 +115,21 @@ Ficheros (todos en la raíz):
   estados, clasificación de checks, helpers de config, `LinkStore` y el flujo del bot
   con `send` inyectado. Robustez añadida: kill switch releído en caliente desde
   `config.json`, backoff exponencial en el loop de red, errores por-update aislados.
-- **Docs añadidos:** `docs/sesame-session.md`, `docs/telegram-auth.md`,
-  `docs/telegram-usage.md`, `docs/sesame-origin.md`, `docs/always-on.md`,
-  `docs/production-runbook.md`, `docs/siri-shortcuts.md`, `docs/github-private.md`.
+- **Docs añadidos:** `docs/security.md` (modelo de seguridad Fase 2/D), `docs/sesame-session.md`,
+  `docs/telegram-auth.md`, `docs/telegram-usage.md`, `docs/sesame-origin.md`,
+  `docs/always-on.md`, `docs/production-runbook.md`, `docs/siri-shortcuts.md`,
+  `docs/github-private.md`.
+- **Bloque D (seguridad):** `arm_real.sh` (arma/desarma `ENABLE_REAL` con caducidad),
+  `secure_perms.sh` (chmod 600). OTP de `/vincular` por consola, gate R1 (employeeId
+  solo del binding en real), idempotencia (flock + `tg_offset`), auditoría que aborta
+  si no puede registrar en real, logs redactados.
 - **`config.example.json`** — plantilla (copiar a `config.json`, gitignored).
 - **`PLAN.md`** — plan extendido (síntesis de los 3 agentes: viabilidad, arquitectura,
   seguridad). **`README.md`** — uso. **`.gitignore`** — ignora secretos/config.
 
-Interruptores de seguridad: el modo real exige **`BOT_DRY_RUN=0` Y `BOT_ALLOW_REAL=1`**, y
-aun así el código lo bloquea hasta Fase 2.
+Interruptores de seguridad: el modo real exige los **3 factores** (`BOT_DRY_RUN=0` +
+`BOT_ALLOW_REAL=1` + `ENABLE_REAL` vigente) **y** chat vinculado por OTP; desarmado por
+defecto. Detalle en `docs/security.md`.
 
 Git: en **GitHub privado** (`origin`, rama `master`), varios commits. `config.json`,
 `audit.jsonl` y `dry_state.json` están gitignored y **no** trackeados (verificado).
@@ -144,16 +154,20 @@ PAUSE_START=check-in(idPausa) · PAUSE_END=check-out(idPausa).
 
 ## 6. Seguridad/cumplimiento — checklist mínima ANTES de cualquier escritura real
 
-(Del agente de seguridad; ver PLAN.md §detallado.)
-- [ ] **R1**: el gate de escritura exige binding/sesión **siempre** (no fichar solo por
-      tener token). *(Esto era un agujero del proxy del dashboard; aquí, al ser repo propio
-      con tu token, diseñar el equivalente.)*
-- [ ] **Emparejamiento** chat↔empleado verificado (compartir contacto + **OTP** fuera de
-      banda); `employeeId` derivado del binding, **nunca** del mensaje. Almacén cifrado.
-- [ ] **Confirmación** explícita por acción (botones Telegram), con caducidad.
-- [ ] **Idempotencia**: leer estado justo antes; no duplicar/solapar; lock por empleado.
-- [ ] **Auditoría** append-only de cada acción. **Rate-limit**. **Kill switch** global.
-- [ ] Token cifrado en reposo, mínimo alcance, nunca expuesto.
+(Implementada en el Bloque D; detalle y procedimiento en `docs/security.md`.)
+- [x] **R1**: en modo real el `employeeId` sale **solo** del binding verificado por OTP
+      (`resolve_employee_id`), nunca de config ni del mensaje.
+- [x] **Emparejamiento** chat↔empleado por **OTP por consola** (`/vincular`); binding
+      persistido en `links.json` (chmod 600). Cifrado en reposo: por decisión, **permisos
+      600** en vez de Fernet (cero dependencias).
+- [x] **Confirmación** explícita por acción (botones Telegram), con caducidad.
+- [x] **Idempotencia**: relectura de estado antes de ejecutar; lock por empleado en
+      memoria + `flock`; dedupe de updates de Telegram vía `tg_offset`.
+- [x] **Auditoría** append-only (chmod 600, hashes), aborta en real si no puede registrar.
+      **Rate-limit** (incluye intentos de OTP). **Kill switch** releído en caliente.
+- [x] Token **mínimo alcance** (tu propia sesión), nunca expuesto, logs redactados,
+      ficheros a 600. Tercer factor `ENABLE_REAL` con caducidad para armar el real.
+- [ ] **PENDIENTE:** la primera **prueba real controlada** (con OK explícito de Jesús).
 
 ---
 

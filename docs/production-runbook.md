@@ -138,16 +138,19 @@ Ver detalles en `docs/sesame-session.md`.
 
 ## Prueba real controlada
 
-No hacer hasta aprobarlo expresamente.
+No hacer hasta aprobarlo expresamente. El camino real exige 3 factores + binding OTP
+(ver `docs/security.md`). Procedimiento minimo:
 
-La prueba real minima seria:
-
-1. Confirmar que estas realmente fuera de jornada.
-2. Activar camino real en codigo.
-3. Arrancar con `BOT_DRY_RUN=0` y `BOT_ALLOW_REAL=1`.
-4. Enviar `fichar`.
-5. Confirmar que aparece entrada en Sesame.
-6. Enviar `fichar` de nuevo para cerrar.
-7. Verificar `/hoy`.
+1. `./secure_perms.sh` (permisos 600 en config y estado).
+2. `/sesion` en verde y confirmar que estas realmente fuera de jornada.
+3. `/vincular` y leer el codigo en la consola del servidor:
+   `journalctl --user -u sesame-fichaje-bot.service -f | grep VINCULACION`.
+   Escribir el codigo en Telegram. `/modo` debe decir "Chat vinculado: si".
+4. Arrancar con `BOT_DRY_RUN=0` y `BOT_ALLOW_REAL=1`.
+5. Armar el tercer factor: `./arm_real.sh` (ventana corta, caduca sola).
+   `/modo` debe decir "Camino real armado: si".
+6. Enviar `fichar`, confirmar SI, y comprobar que aparece la entrada en Sesame.
+7. Enviar `fichar` de nuevo para cerrar. Verificar `/hoy`.
+8. `./arm_real.sh off` al terminar.
 
 Hasta entonces, produccion recomendada = estado real + acciones simuladas.

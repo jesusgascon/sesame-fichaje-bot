@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import sesame_client
 import telegram_bot as tb
 import state_machine as sm
 
@@ -14,11 +15,16 @@ class FlowTestCase(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp())
         tb.AUDIT_LOG = tmp / "audit.jsonl"
         tb.DRY_STATE_FILE = tmp / "dry.json"
+        tb.OFFSET_FILE = tmp / "tg_offset"
+        tb.LOCK_DIR = tmp / ".locks"
+        tb.LINKS = tb.link_store.LinkStore(tmp / "links.json")
         tb.DRY_STATE.clear()
         tb.PENDING.clear()
+        tb.PENDING_OTP.clear()
         tb.RATE.clear()
         tb.LOCKS.clear()
         tb.CONFIG["authorized_chat_ids"] = [1]
+        tb.CONFIG["employee_id"] = "demo"
         os.environ["BOT_TEST_EMPLOYEE_ID"] = "demo"
         os.environ["BOT_KILL_SWITCH"] = "0"
         self.sent = []
@@ -84,6 +90,55 @@ class TestGuards(FlowTestCase):
         tb.PENDING[1]["expires_at"] = 0  # fuerza caducidad
         tb.handle(1, "SI")
         self.assertIn("caducado", self.last.lower())
+
+
+class TestOtpPairing(FlowTestCase):
+    def test_vincular_issues_otp_and_binds(self):
+        tb.handle(1, "/vincular")
+        self.assertIn("consola", self.last.lower())
+        self.assertIn(1, tb.PENDING_OTP)
+        code = tb.PENDING_OTP[1]["code"]
+        tb.handle(1, code)
+        self.assertIn("vinculado", self.last.lower())
+        self.assertEqual(tb.LINKS.get(1), "demo")
+
+    def test_wrong_code_rejected(self):
+        tb.handle(1, "/vincular")
+        real_code = tb.PENDING_OTP[1]["code"]
+        wrong = "000000" if real_code != "000000" else "111111"
+        tb.handle(1, wrong)
+        self.assertIn("incorrecto", self.last.lower())
+        self.assertIsNone(tb.LINKS.get(1))
+
+    def test_expired_code_rejected(self):
+        tb.handle(1, "/vincular")
+        code = tb.PENDING_OTP[1]["code"]
+        tb.PENDING_OTP[1]["expires_at"] = 0
+        tb.handle(1, code)
+        self.assertIn("caducado", self.last.lower())
+        self.assertIsNone(tb.LINKS.get(1))
+
+    def test_vincular_requires_authorization(self):
+        tb.handle(999, "/vincular")
+        self.assertIn("no autorizado", self.last.lower())
+
+
+class TestGateR1(FlowTestCase):
+    def test_real_mode_requires_verified_binding(self):
+        dry, real = sesame_client.DRY_RUN, sesame_client.ALLOW_REAL
+        try:
+            sesame_client.DRY_RUN = False
+            sesame_client.ALLOW_REAL = True
+            # Sin binding, en real NO se deriva el employeeId de config (gate R1).
+            self.assertIsNone(tb.resolve_employee_id(1))
+            tb.LINKS.set(1, "demo")
+            self.assertEqual(tb.resolve_employee_id(1), "demo")
+        finally:
+            sesame_client.DRY_RUN = dry
+            sesame_client.ALLOW_REAL = real
+
+    def test_dry_run_allows_config_fallback(self):
+        self.assertEqual(tb.resolve_employee_id(1), "demo")
 
 
 class TestRateLimit(unittest.TestCase):
