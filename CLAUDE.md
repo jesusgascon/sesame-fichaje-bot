@@ -33,8 +33,11 @@ se aprueban juntos antes**.
    lanza error y no ficha. La **primera prueba real** requiere OK explícito de Jesús
    (ver checklist en `docs/security.md`).
 2. **No commits/push sin permiso explícito** de Jesús (cada vez). El repo está en
-   **GitHub PRIVADO** (`github.com/jesusgascon/sesame-fichaje-bot`, rama `master`).
-   Publicar/pushear cambios requiere su OK explícito cada vez. Nunca subir secretos.
+   **GitHub PÚBLICO** (`github.com/jesusgascon/sesame-fichaje-bot`, rama `master`,
+   licencia MIT) desde 2026-06-25. Publicar/pushear cambios requiere su OK explícito
+   cada vez. **Nunca subir secretos** (extra importante al ser público): `config.json`,
+   `links.json`, `audit.jsonl`, `ENABLE_REAL` están gitignored y verificados fuera del
+   historial. El historial se reescribió para purgar coordenadas GPS reales.
 3. **Limpieza y orden siempre** (borrar ramas/temporales tras fusionar, no dejar restos).
 4. **No exponer secretos.** Nunca pegar/guardar el token de sesión, cookies, csid, ni el
    móvil/employeeId real en claro, ni en commits. `config.json` está gitignored.
