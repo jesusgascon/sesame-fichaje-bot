@@ -7,8 +7,8 @@ verdad hacen falta DOS interruptores a la vez:
     BOT_DRY_RUN=0   y   BOT_ALLOW_REAL=1
 Así un despiste no puede provocar un fichaje real.
 
-A diferencia del dashboard (que usa el token ADMIN de un compañero solo para
-LEER al equipo), este bot usa TU PROPIO token de sesión para FICHAR en tu
+A diferencia del dashboard (que usa un token ADMIN solo para LEER al equipo),
+este bot usa TU PROPIO token de sesión para FICHAR en tu
 usuario → el fichaje queda registrado como tuyo, sin marca de "tercero".
 
 Endpoint interno confirmado:
@@ -35,8 +35,8 @@ ALLOW_REAL = os.environ.get("BOT_ALLOW_REAL", "0") == "1"
 CONFIG_PATH = Path(os.environ.get("BOT_CONFIG", "config.json"))
 
 # Tipo de "pausa" en Sesame (de GET /api/v3/employees/{id}/assigned-work-check-types).
+# Se resuelve vía get_setting("pause_check_type_id"), que ya cubre env+config.
 # TODO: confirmar el id real antes de usar pausas en real.
-PAUSE_CHECK_TYPE_ID = os.environ.get("BOT_PAUSE_CHECK_TYPE_ID") or None
 
 _ENDPOINT = {
     "CLOCK_IN":    ("check-in",  None),
@@ -61,6 +61,34 @@ def get_setting(name: str, default=None, config: dict | None = None):
         return os.environ[env_name]
     cfg = config if config is not None else load_config()
     return cfg.get(name, default)
+
+
+def is_configured(value) -> bool:
+    """True si un campo de config está relleno y no es un placeholder PEGA_AQUI/TU_."""
+    text = str(value or "").strip()
+    return bool(text) and not text.startswith(("PEGA_AQUI", "TU_"))
+
+
+def require_read_config(purpose: str = "leer Sesame") -> dict | None:
+    """Carga config.json y valida las credenciales de lectura.
+
+    Imprime qué falta y devuelve None si no está lista; si todo OK devuelve el
+    dict de config. Centraliza la validación que antes repetían los probe_*.py.
+    """
+    cfg_path = Path("config.json")
+    if not cfg_path.exists():
+        raise SystemExit("Falta config.json.")
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    pending = [k for k in ("csid", "employee_id") if not is_configured(cfg.get(k))]
+    if not is_configured(cfg.get("sesame_token")) and not is_configured(cfg.get("usid")):
+        pending.append("sesame_token o usid")
+    if pending:
+        print(f"Faltan campos para {purpose}:")
+        for key in pending:
+            print(f"- {key}")
+        print("No se ha llamado a Sesame.")
+        return None
+    return cfg
 
 
 def get_auth(config: dict | None = None) -> dict:
@@ -90,7 +118,7 @@ def _resolve_endpoint(action: str):
     if wct != "pause":
         return path, wct
 
-    pause_id = get_setting("pause_check_type_id") or os.environ.get("BOT_PAUSE_CHECK_TYPE_ID") or PAUSE_CHECK_TYPE_ID
+    pause_id = get_setting("pause_check_type_id")
     if pause_id:
         return path, pause_id
     if DRY_RUN:
@@ -366,13 +394,18 @@ def _find_presence_record(value):
     return None
 
 
-def _real_get_json(url, auth):  # pragma: no cover  (depende de Sesame)
+def _auth_headers(auth, extra=None) -> dict:  # pragma: no cover  (depende de Sesame)
+    """Cabeceras de autenticación de sesión (csid + Bearer o cookie USID).
+
+    Compartido por las lecturas (GET) y por el camino real de escritura (POST),
+    para que ambos usen exactamente la misma auth ya validada en lectura.
+    """
     token = (auth or {}).get("token")
     usid = (auth or {}).get("usid")
     csid = (auth or {}).get("csid")
     esid = (auth or {}).get("esid")
     if not csid or (not token and not usid):
-        raise RuntimeError("Faltan sesame_token o usid, y csid, para leer Sesame.")
+        raise RuntimeError("Faltan sesame_token o usid, y csid, para hablar con Sesame.")
 
     headers = {"csid": csid}
     if token:
@@ -381,12 +414,13 @@ def _real_get_json(url, auth):  # pragma: no cover  (depende de Sesame)
         headers["Cookie"] = f"USID={usid}"
     if esid:
         headers["esid"] = esid
+    if extra:
+        headers.update(extra)
+    return headers
 
-    req = urllib.request.Request(
-        url,
-        method="GET",
-        headers=headers,
-    )
+
+def _real_get_json(url, auth):  # pragma: no cover  (depende de Sesame)
+    req = urllib.request.Request(url, method="GET", headers=_auth_headers(auth))
     ctx = ssl.create_default_context()
     try:
         with urllib.request.urlopen(req, context=ctx, timeout=15) as r:
@@ -396,13 +430,14 @@ def _real_get_json(url, auth):  # pragma: no cover  (depende de Sesame)
         raise RuntimeError(f"Sesame GET falló: HTTP {e.code} {body[:300]}") from e
 
 
-def _real_post(url, body, token, csid):  # pragma: no cover  (reservado Fase 2)
-    """Camino real aislado: POST directo a Sesame con TU token de sesión."""
+def _real_post(url, body, auth):  # pragma: no cover  (reservado Fase 2)
+    """Camino real aislado: POST directo a Sesame con TU sesión.
+
+    Usa _auth_headers, así que admite Bearer o cookie USID igual que la lectura.
+    """
     data = json.dumps(body).encode()
-    req = urllib.request.Request(
-        url, data=data, method="POST",
-        headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {token}", "csid": csid})
+    headers = _auth_headers(auth, {"Content-Type": "application/json"})
+    req = urllib.request.Request(url, data=data, method="POST", headers=headers)
     ctx = ssl.create_default_context()
     with urllib.request.urlopen(req, context=ctx, timeout=15) as r:
         return {"status": r.status, "body": r.read().decode("utf-8", "replace")}

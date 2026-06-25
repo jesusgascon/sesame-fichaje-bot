@@ -47,12 +47,12 @@ bloqueando el POST real hasta hacer una prueba controlada y revisar las guardas.
 
 ```bash
 python3 check_config.py
-python3 probe_sesame_state.py
-python3 probe_sesame_readonly.py
-python3 probe_pause_candidates.py
+python3 probe.py state
+python3 probe.py types
+python3 probe.py pauses
 ```
 
-Esperado:
+Esperado (salida de `check_config.py`):
 
 ```text
 token de Telegram: OK
@@ -60,6 +60,8 @@ cookie USID de Sesame: OK
 csid de Sesame: OK
 esid de Sesame: OK
 employeeId de Sesame: OK
+autenticacion Sesame: OK
+endpoint estado Sesame: PENDIENTE   (opcional: hay fallback a /checks)
 id pausa/descanso: OK
 chats autorizados Telegram: OK
 ```

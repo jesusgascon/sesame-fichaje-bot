@@ -15,13 +15,16 @@ Comprobaciones:
   python3 check_config.py
       Revisa configuracion local sin imprimir secretos.
 
-  python3 probe_sesame_state.py
+  python3 probe.py state
       Lee el estado real actual de Sesame.
 
-  python3 probe_sesame_readonly.py
+  python3 probe.py types
       Comprueba sesion y tipos asignados.
 
-  python3 probe_pause_candidates.py
+  python3 probe.py checks
+      Vuelca los checks de hoy (claves seguras).
+
+  python3 probe.py pauses
       Busca el id de Descanso en checks existentes.
 
   python3 set_telegram_commands.py

@@ -101,8 +101,8 @@ Sin imprimir secretos:
 
 ```bash
 python3 check_config.py
-python3 probe_sesame_state.py
-python3 probe_sesame_readonly.py
+python3 probe.py state
+python3 probe.py types
 ```
 
 Desde Telegram:

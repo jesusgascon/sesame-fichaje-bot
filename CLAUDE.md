@@ -13,7 +13,7 @@ desde el móvil. Es un proyecto **independiente** del dashboard `calendario-vaca
 (otra carpeta/repo, en `../calendario-vacaciones`).
 
 - **Dashboard** (`calendario-vacaciones`, rama `master`): web de **solo LECTURA**;
-  ve a todo el equipo usando el **token admin** de un compañero. **NO se toca desde
+  ve a todo el equipo usando un **token admin**. **NO se toca desde
   aquí.** Su trabajo va en SU propia conversación.
 - **Este repo**: **ESCRIBE** en Sesame (crea fichajes). Por eso vive aparte: aísla el
   riesgo (legal/seguridad) del dashboard de solo-lectura.
@@ -28,8 +28,9 @@ se aprueban juntos antes**.
 
 1. **NADA de fichajes reales todavía.** El bot está en **dry-run**. El camino real está
    deshabilitado en código (lanza `RuntimeError`) hasta completar la Fase 2 de seguridad.
-2. **No commits/push sin permiso explícito** de Jesús (cada vez). El repo es **LOCAL**;
-   **no está en GitHub** y no se sube hasta que él lo pida.
+2. **No commits/push sin permiso explícito** de Jesús (cada vez). El repo está en
+   **GitHub PRIVADO** (`github.com/jesusgascon/sesame-fichaje-bot`, rama `master`).
+   Publicar/pushear cambios requiere su OK explícito cada vez. Nunca subir secretos.
 3. **Limpieza y orden siempre** (borrar ramas/temporales tras fusionar, no dejar restos).
 4. **No exponer secretos.** Nunca pegar/guardar el token de sesión, cookies, csid, ni el
    móvil/employeeId real en claro, ni en commits. `config.json` está gitignored.
@@ -74,11 +75,11 @@ body: {
 ## 3. Decisiones tomadas
 
 - **Credenciales (opción limpia):** el bot usa el **token PROPIO de Jesús** para fichar en
-  su usuario → el fichaje queda como suyo, sin marca de "tercero". (El token admin del
-  compañero se queda solo en el dashboard, para LEER al equipo.)
+  su usuario → el fichaje queda como suyo, sin marca de "tercero". (El token admin
+  se queda solo en el dashboard, para LEER al equipo.)
 - **Canal: Telegram** (gratis, inmediato, botones de confirmación). Plan B: WhatsApp
   Business API oficial (coste/aprobación) — solo si hiciera falta.
-- **Repo independiente, local** (este). Sin GitHub por ahora.
+- **Repo independiente**, en **GitHub privado** (`github.com/jesusgascon/sesame-fichaje-bot`).
 - **Casos de la máquina de estados** (ver §5): `fichar` en pausa → cerrar pausa + jornada;
   `pausar` estando fuera → preguntar e iniciar jornada ya en pausa (no inventar micro-jornada).
 
@@ -94,16 +95,19 @@ Ficheros (todos en la raíz):
   También carga `config.json`, prepara auth/coords y tiene lectura GET configurable
   para clasificar estado real (`state_url_template` pendiente de confirmar).
 - **`telegram_bot.py`** — bot Telegram (long-polling, sin dependencias). Comandos:
-  `fichar`, `pausar`, `/estado`, `/vincular`. En dry-run usa `BOT_FAKE_STATE`; fuera
+  `fichar`/`/fichar`, `pausar`/`/pausar`, `/estado`, `/hoy`, `/sesion`, `/modo`,
+  `/reset` (solo simulación), `/mi_chat_id`, `/vincular` (stub), `/start`, `/ayuda`.
+  En dry-run usa `BOT_FAKE_STATE`; fuera
   de dry-run llama a `sesame_client.get_current_state`. Incluye caducidad de
   confirmaciones, rate-limit, lock por empleado, kill switch y auditoría JSONL con
   hashes (sin secretos ni employeeId en claro).
 - **Scripts añadidos:** `run_dry_run.sh`, `run_real_state_dry_actions.sh`, `help.sh`,
-  `check_config.py`, `probe_sesame_state.py`, `probe_sesame_readonly.py`,
-  `probe_sesame_checks.py`, `probe_pause_candidates.py`.
+  `check_config.py`, `set_telegram_commands.py`, y `probe.py` (CLI unificado de sondas
+  de solo lectura: `python3 probe.py state|types|checks|pauses`; sustituye a los
+  antiguos `probe_sesame_*.py`).
 - **Docs añadidos:** `docs/sesame-session.md`, `docs/telegram-auth.md`,
   `docs/telegram-usage.md`, `docs/sesame-origin.md`, `docs/always-on.md`,
-  `docs/production-runbook.md`.
+  `docs/production-runbook.md`, `docs/siri-shortcuts.md`, `docs/github-private.md`.
 - **`config.example.json`** — plantilla (copiar a `config.json`, gitignored).
 - **`PLAN.md`** — plan extendido (síntesis de los 3 agentes: viabilidad, arquitectura,
   seguridad). **`README.md`** — uso. **`.gitignore`** — ignora secretos/config.
@@ -111,7 +115,8 @@ Ficheros (todos en la raíz):
 Interruptores de seguridad: el modo real exige **`BOT_DRY_RUN=0` Y `BOT_ALLOW_REAL=1`**, y
 aun así el código lo bloquea hasta Fase 2.
 
-Git: repo local, 1 commit (`Esqueleto inicial...`). Sin remoto.
+Git: en **GitHub privado** (`origin`, rama `master`), varios commits. `config.json`,
+`audit.jsonl` y `dry_state.json` están gitignored y **no** trackeados (verificado).
 
 ---
 
