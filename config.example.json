@@ -23,8 +23,8 @@
   "dry_state_file": "dry_state.json",
   "kill_switch": false,
 
-  "_pause_comment": "Id del tipo de pausa (de GET /api/v3/employees/{id}/assigned-work-check-types). Pendiente de confirmar.",
+  "_pause_comment": "workBreakId del tipo de Descanso. Sale del campo workBreakId de tus checks reales (NO de assigned-work-check-types). Las pausas usan POST .../employees/{id}/pause con este id; terminar la pausa es un check-in normal.",
   "pause_check_type_id": null,
 
-  "_safety": "El modo real exige BOT_DRY_RUN=0 y BOT_ALLOW_REAL=1, y aun así está deshabilitado en código hasta la Fase 2."
+  "_safety": "Modo real: exige BOT_DRY_RUN=0, BOT_ALLOW_REAL=1 Y el fichero ENABLE_REAL vigente (./arm_real.sh), ademas de chat vinculado por OTP. Desarmado por defecto."
 }

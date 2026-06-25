@@ -67,9 +67,13 @@ body: {
 
 - **El `{employeeId}` de la URL = a quién se ficha. El token = quién autoriza.** Por eso,
   poniendo el employeeId de Jesús, ficha en SU usuario, no en el del token.
-- **Pausas:** se hacen con `workCheckTypeId` = id de un tipo de pausa, que se obtiene de
-  `GET https://back-eu1.sesametime.com/api/v3/employees/{employeeId}/assigned-work-check-types`.
-  **TODO: capturar/confirmar ese id antes de implementar pausas reales.**
+- **Pausas (CONFIRMADO por captura del navegador, 200 OK):** son ASIMÉTRICAS.
+  - **Empezar** pausa: `POST .../employees/{id}/pause` con body
+    `{"origin":"web","coordinates":{…},"workCheckTypeId":null,"workBreakId":"<id>"}`.
+  - **Terminar** pausa = reanudar trabajo: es un **`POST .../check-in`** normal
+    (workCheckTypeId null, sin workBreakId), NO el endpoint `/pause`.
+  El `workBreakId` del "Descanso" (`config.pause_check_type_id`) = `ee2a8dd8-…` (sale de
+  los checks reales, no de `assigned-work-check-types`, que solo da "Teletrabajo").
 - Auth en la web = cookie `USID` + `csid` + `esid`. El bot usará el **token de sesión de
   Jesús** en la cabecera (`Authorization: Bearer <token>` + `csid`), capturado de forma
   segura. **TODO Fase 2: validar que el POST se acepta por Bearer con una prueba controlada.**
@@ -147,8 +151,9 @@ Estados: `out` (fuera) · `working` (trabajando) · `paused` (en pausa) · `remo
 | working / remote | CLOCK_OUT (confirmar) | PAUSE_START |
 | paused | PAUSE_END + CLOCK_OUT (confirmar) | PAUSE_END |
 
-Acciones → HTTP: CLOCK_IN=check-in(null) · CLOCK_OUT=check-out(null) ·
-PAUSE_START=check-in(idPausa) · PAUSE_END=check-out(idPausa).
+Acciones → HTTP: CLOCK_IN=check-in(workCheckTypeId null) · CLOCK_OUT=check-out(null) ·
+PAUSE_START=POST `/pause` con `workBreakId` (empezar) · PAUSE_END=`check-in` normal
+(terminar = reanudar trabajo).
 
 ---
 
