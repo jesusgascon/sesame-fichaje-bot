@@ -99,9 +99,10 @@ Ficheros (todos en la raíz):
 - **`state_machine.py`** — lógica pura fichar/pausar (estado × comando → acciones). Sin red.
   Pruébalo: `python3 state_machine.py` (imprime la tabla de decisiones).
 - **`sesame_client.py`** — ejecuta acciones contra el endpoint interno. **Dry-run por
-  defecto** (`DRY_RUN=True`, `ALLOW_REAL=False`). El camino real lanza `RuntimeError`.
-  También carga `config.json`, prepara auth/coords y tiene lectura GET configurable
-  para clasificar estado real (`state_url_template` pendiente de confirmar).
+  defecto** (`DRY_RUN=True`, `ALLOW_REAL=False`); el camino real solo se ejecuta con los
+  3 factores armados (`real_path_armed`), si no lanza error explicando qué falta.
+  También carga `config.json`, prepara auth/coords, lee el estado real de `/checks` y
+  conoce el contrato de pausas (`/pause` + `workBreakId`).
 - **`telegram_bot.py`** — bot Telegram (long-polling, sin dependencias). Comandos:
   `fichar`/`/fichar`, `pausar`/`/pausar`, `/estado`, `/hoy`, `/sesion`, `/modo`,
   `/reset` (solo simulación), `/mi_chat_id`, `/vincular` (stub), `/start`, `/ayuda`.
@@ -172,29 +173,25 @@ PAUSE_START=POST `/pause` con `workBreakId` (empezar) · PAUSE_END=`check-in` no
       **Rate-limit** (incluye intentos de OTP). **Kill switch** releído en caliente.
 - [x] Token **mínimo alcance** (tu propia sesión), nunca expuesto, logs redactados,
       ficheros a 600. Tercer factor `ENABLE_REAL` con caducidad para armar el real.
-- [ ] **PENDIENTE:** la primera **prueba real controlada** (con OK explícito de Jesús).
+- [x] **Primera prueba real controlada HECHA (2026-06-25):** validados en real fichar
+      (jornadas, "Oficina") y pausar (descansos). Modo real operativo (v1.0.0).
 
 ---
 
-## 7. PRÓXIMOS PASOS (Fase 2) — por aquí seguimos
+## 7. ESTADO (Fase 2 COMPLETA — v1.0.0, 2026-06-25)
 
-Orden sugerido (proponer a Jesús y aprobar antes de cada salto a "real"):
-1. **Cablear `get_state` real**: hecho usando `GET /api/v3/employees/{id}/checks`
-   del día y clasificación de tramos abiertos. `/estado` lee Sesame real en
-   `run_real_state_dry_actions.sh`.
-2. **Capturar de forma segura el token propio de Jesús** + su `employeeId` + el
-   `workCheckTypeId` de pausa (de `assigned-work-check-types`). Guardar en `config.json`
-   (gitignored). **Nunca pegarlo en claro en el chat.**
-3. **Emparejamiento OTP** (Telegram) + almacén cifrado del binding. Parcialmente
-   cubierto con `authorized_chat_ids` local; OTP/cifrado siguen pendientes.
-4. **Idempotencia + auditoría + kill switch + confirmación** en el flujo. Base hecha:
-   relectura de estado antes de ejecutar, confirmaciones con caducidad, lock por
-   empleado, rate-limit, kill switch, botones Telegram SI/NO y auditoría JSONL.
-   **Pendiente:** endurecer persistencia/binding cifrado.
-5. **PRUEBA REAL CONTROLADA** (con OK explícito de Jesús): un `check-in` + `check-out` en
-   su propio usuario para validar que el POST por Bearer funciona. Crea un fichaje real de
-   segundos (visible y borrable). Solo tras esto, habilitar el modo real con guardas.
-6. Iterar: pausas, mensajes, despliegue (daemon).
+Todo lo planificado de la Fase 2 está hecho y validado en real:
+1. ✅ `get_state` real (`/checks` + clasificación de tramos abiertos).
+2. ✅ Sesión propia + `employeeId` + `workBreakId` de pausa capturados en `config.json`.
+3. ✅ Emparejamiento OTP por consola + binding persistido (`links.json`, 600).
+4. ✅ Idempotencia (flock + dedupe `tg_offset`) + auditoría endurecida + kill switch en
+   caliente + confirmaciones + rate-limit + logs redactados + 3er factor `ENABLE_REAL`.
+5. ✅ Prueba real controlada hecha: fichar (jornadas, "Oficina") y pausar (descansos).
+6. ✅ Pausas resueltas: empezar = `POST /pause` con `workBreakId`; terminar = `check-in`.
+
+**Posibles siguientes pasos (opcionales):** selector Oficina/Remoto si mezcla
+ubicaciones; endpoint HTTPS para Atajos/Siri; cifrado del binding si cambia el modelo de
+amenaza. Re-armar `./arm_real.sh` cuando caduque la ventana (~30 días).
 
 ---
 
@@ -205,4 +202,5 @@ Orden sugerido (proponer a Jesús y aprobar antes de cada salto a "real"):
 - Modo agéntico OK si Jesús lo pide (lanzar subagentes para investigar/implementar/revisar).
 - Probar siempre en **dry-run**; nada real sin aprobación y sin la checklist §6.
 
-**Arranque típico de sesión:** "Lee CLAUDE.md y seguimos con la Fase 2 del bot."
+**Arranque típico de sesión:** "Lee CLAUDE.md." El bot está en **v1.0.0**, modo real
+validado. Manual de usuario en `docs/guia-completa.md`.

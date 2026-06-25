@@ -4,9 +4,13 @@ Bot de **Telegram** para **fichar / pausar** en Sesame desde el móvil. Proyecto
 **independiente** del dashboard `calendario-vacaciones` (que es de solo lectura):
 aquí se **escribe** en Sesame, así que vive aparte para aislar el riesgo.
 
-> ⚠️ **Por defecto NO ficha nada real.** Arranca en **dry-run** (simula y registra
-> "lo que haría"). El camino real está deshabilitado en código hasta completar la
-> Fase 2 de seguridad. Ver `PLAN.md`.
+> 📖 **¿Buscas cómo usarlo?** Manual completo en
+> **[`docs/guia-completa.md`](docs/guia-completa.md)** (comandos, puesta en marcha,
+> pausas, herramientas, resolución de problemas).
+
+> ✅ **Modo real validado.** El bot ficha de verdad (jornadas y pausas) en tu usuario.
+> Arranca **seguro por defecto**: el camino real exige 3 factores y está **desarmado**
+> hasta que lo armes (ver "Interruptores de seguridad" y `docs/security.md`).
 
 ## Idea
 Desde tu móvil escribes al bot `fichar` o `pausar` y el bot registra la acción en
@@ -79,7 +83,8 @@ Ver `PLAN.md` y `docs/security.md`. Resumen:
 - ✅ Dry-run + `get_state` real + tests (stdlib).
 - ✅ Fase 2/seguridad: emparejamiento OTP (consola), gate R1, idempotencia (flock +
   dedupe), auditoría endurecida, kill switch en caliente, permisos 600, 3er factor.
-- ⏳ Pendiente: confirmar tipo de pausa y la **primera prueba real controlada**.
+- ✅ **Modo real validado** (v1.0.0): fichar (jornadas) y pausar (descansos) en real,
+  contratos de Sesame confirmados (check-in/out y `/pause` + `workBreakId`).
 
 ### Estado real
 En dry-run, `/estado` sigue usando `BOT_FAKE_STATE`. Fuera de dry-run, el estado real se
@@ -137,6 +142,8 @@ Para dejar el bot siempre encendido como servicio de usuario, ver
 
 Guias operativas:
 
+- [`docs/guia-completa.md`](docs/guia-completa.md) — **manual completo**: comandos,
+  puesta en marcha, pausas, modos, herramientas y resolucion de problemas.
 - [`docs/security.md`](docs/security.md) — modelo de seguridad: OTP, 3er factor,
   gate R1, idempotencia, auditoria, permisos 600 y checklist de prueba real.
 - [`docs/production-runbook.md`](docs/production-runbook.md) — arrancar, parar,
