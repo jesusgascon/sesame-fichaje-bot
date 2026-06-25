@@ -46,10 +46,13 @@ ENABLE_REAL_TTL = int(os.environ.get("BOT_ENABLE_REAL_TTL_SECONDS", "3600"))
 # TODO: confirmar el id real antes de usar pausas en real.
 
 _ENDPOINT = {
-    "CLOCK_IN":    ("check-in",  None),
-    "CLOCK_OUT":   ("check-out", None),
-    "PAUSE_START": ("check-in",  "pause"),
-    "PAUSE_END":   ("check-out", "pause"),
+    "CLOCK_IN":    ("check-in",  False),
+    "CLOCK_OUT":   ("check-out", False),
+    # Empezar pausa: POST .../pause con workBreakId (workCheckTypeId=null).
+    "PAUSE_START": ("pause",     True),
+    # Terminar pausa = reanudar trabajo: es un check-in normal (confirmado por captura
+    # del navegador: al volver de la pausa Sesame llama a /check-in, no a /pause).
+    "PAUSE_END":   ("check-in",  False),
 }
 
 
@@ -119,25 +122,31 @@ def get_coordinates(config: dict | None = None):
 
 
 def _resolve_endpoint(action: str):
+    """Devuelve (path, work_break_id). work_break_id solo se usa en pausas."""
     if action not in _ENDPOINT:
         raise ValueError(f"Acción desconocida: {action}")
-    path, wct = _ENDPOINT[action]
-    if wct != "pause":
-        return path, wct
+    path, is_break = _ENDPOINT[action]
+    if not is_break:
+        return path, None
 
-    pause_id = get_setting("pause_check_type_id")
-    if pause_id:
-        return path, pause_id
+    # `pause_check_type_id` en config contiene en realidad el workBreakId del Descanso.
+    break_id = get_setting("pause_check_type_id")
+    if break_id:
+        return path, break_id
     if DRY_RUN:
-        return path, "PENDING_PAUSE_CHECK_TYPE_ID"
-    raise RuntimeError("Falta pause_check_type_id para ejecutar pausas en real.")
+        return path, "PENDING_WORK_BREAK_ID"
+    raise RuntimeError("Falta pause_check_type_id (workBreakId del Descanso) para las pausas.")
 
 
-def _body(coords, work_check_type_id):
+def _body(coords, work_break_id=None):
+    """Cuerpo del POST. Trabajo: workCheckTypeId=null. Pausa: además workBreakId."""
     lat, lon = (coords or (None, None))
-    return {"origin": "web",
+    body = {"origin": "web",
             "coordinates": {"latitude": lat, "longitude": lon},
-            "workCheckTypeId": work_check_type_id}
+            "workCheckTypeId": None}
+    if work_break_id:
+        body["workBreakId"] = work_break_id
+    return body
 
 
 def enable_real_token_valid() -> tuple[bool, str]:

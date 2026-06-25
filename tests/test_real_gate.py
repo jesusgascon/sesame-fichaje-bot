@@ -53,5 +53,42 @@ class TestExecuteActionDryRun(unittest.TestCase):
         self.assertTrue(res["ok"])
 
 
+class TestEndpointContract(unittest.TestCase):
+    """Fija el contrato capturado del navegador: trabajo via check-in/out con
+    workCheckTypeId=null; pausa via endpoint toggle /pause con workBreakId."""
+
+    def setUp(self):
+        os.environ["BOT_PAUSE_CHECK_TYPE_ID"] = "break-id-123"
+
+    def tearDown(self):
+        os.environ.pop("BOT_PAUSE_CHECK_TYPE_ID", None)
+
+    def _action(self, action):
+        return sc.execute_action(action, "EMP", coords=(41.63, -0.91))
+
+    def test_clock_in_uses_check_in(self):
+        res = self._action("CLOCK_IN")
+        self.assertTrue(res["url"].endswith("/EMP/check-in"))
+        self.assertIsNone(res["body"]["workCheckTypeId"])
+        self.assertNotIn("workBreakId", res["body"])
+
+    def test_clock_out_uses_check_out(self):
+        res = self._action("CLOCK_OUT")
+        self.assertTrue(res["url"].endswith("/EMP/check-out"))
+
+    def test_pause_start_uses_pause_endpoint_with_break_id(self):
+        res = self._action("PAUSE_START")
+        self.assertTrue(res["url"].endswith("/EMP/pause"))
+        self.assertIsNone(res["body"]["workCheckTypeId"])
+        self.assertEqual(res["body"]["workBreakId"], "break-id-123")
+
+    def test_pause_end_resumes_work_via_check_in(self):
+        # Terminar la pausa = reanudar trabajo = check-in normal (sin workBreakId).
+        res = self._action("PAUSE_END")
+        self.assertTrue(res["url"].endswith("/EMP/check-in"))
+        self.assertIsNone(res["body"]["workCheckTypeId"])
+        self.assertNotIn("workBreakId", res["body"])
+
+
 if __name__ == "__main__":
     unittest.main()
