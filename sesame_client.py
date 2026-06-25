@@ -379,6 +379,11 @@ def _find_presence_record(value):
                 "workCheckType",
                 "isWorking",
                 "isPaused",
+                "isRemote",
+                "remote",
+                "paused",
+                "working",
+                "active",
             )
         ):
             return value

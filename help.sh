@@ -30,6 +30,10 @@ Comprobaciones:
   python3 set_telegram_commands.py
       Registra /fichar, /pausar, /hoy y otros comandos en Telegram.
 
+Tests:
+  ./run_tests.sh
+      Suite con unittest (stdlib). Todo en dry-run: no toca red ni Sesame.
+
 Telegram:
   /start       ayuda inicial
   /ayuda       ayuda completa

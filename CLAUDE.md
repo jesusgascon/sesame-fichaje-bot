@@ -105,6 +105,12 @@ Ficheros (todos en la raíz):
   `check_config.py`, `set_telegram_commands.py`, y `probe.py` (CLI unificado de sondas
   de solo lectura: `python3 probe.py state|types|checks|pauses`; sustituye a los
   antiguos `probe_sesame_*.py`).
+- **`link_store.py`** — almacén persistente (JSON `links.json`, gitignored) del vínculo
+  chat↔empleado; costura para el binding cifrado por OTP de la Fase 2.
+- **Tests:** `tests/` (unittest stdlib, sin red) + `run_tests.sh`. Cubren máquina de
+  estados, clasificación de checks, helpers de config, `LinkStore` y el flujo del bot
+  con `send` inyectado. Robustez añadida: kill switch releído en caliente desde
+  `config.json`, backoff exponencial en el loop de red, errores por-update aislados.
 - **Docs añadidos:** `docs/sesame-session.md`, `docs/telegram-auth.md`,
   `docs/telegram-usage.md`, `docs/sesame-origin.md`, `docs/always-on.md`,
   `docs/production-runbook.md`, `docs/siri-shortcuts.md`, `docs/github-private.md`.

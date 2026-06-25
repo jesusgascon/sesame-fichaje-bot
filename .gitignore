@@ -8,6 +8,7 @@ key.bin
 audit.jsonl
 audit*.jsonl
 dry_state.json
+links.json
 
 # Python
 __pycache__/
