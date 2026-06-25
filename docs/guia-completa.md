@@ -271,6 +271,27 @@ así que no hay que revincular ni rearmar en cada arranque. Recuerda **rearmar
 
 ---
 
+## 10b. Recordatorios proactivos
+
+Configurables en el bloque `reminders` de `config.json` (solo lectura; el de salida
+NUNCA ficha solo: deja un botón SI). Horas en hora local del servidor.
+
+```json
+"reminders": {
+  "enabled": true,
+  "clock_out_time": "16:45",      // si sigues fichado a esta hora, te avisa con botón SI
+  "clock_out_window_min": 120,    // ventana tras la hora (evita avisos a deshora)
+  "token_probe_time": "08:00",    // chequeo diario del token; avisa si caducó
+  "enable_real_warn_days": 3      // avisa si ENABLE_REAL caduca en <= N días
+}
+```
+
+- El recordatorio de salida pretende que fiches **a tiempo** y evites la incidencia que
+  Sesame manda por email a salida+15 min.
+- El probe del token convierte el fallo silencioso (token caducado) en un aviso proactivo.
+- Estado del scheduler en `reminders_state.json` (gitignored); se dispara cada tarea una
+  vez al día.
+
 ## 11. Resolución de problemas
 
 | Síntoma | Causa probable / solución |

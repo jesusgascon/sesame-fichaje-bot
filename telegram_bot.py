@@ -21,6 +21,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta
 from pathlib import Path
 
 try:
@@ -35,7 +36,7 @@ import state_machine as sm
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("telegram_bot")
 
-BOT_VERSION = "1.0.3"
+BOT_VERSION = "1.0.4"
 
 CONFIG = sesame_client.load_config()
 TOKEN = os.environ.get("BOT_TELEGRAM_TOKEN") or CONFIG.get("telegram_token", "")
@@ -58,6 +59,9 @@ RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("BOT_RATE_LIMIT_WINDOW_SECONDS", 
 AUDIT_LOG = Path(os.environ.get("BOT_AUDIT_LOG", CONFIG.get("audit_log", "audit.jsonl")))
 DRY_STATE_FILE = Path(os.environ.get("BOT_DRY_STATE_FILE", CONFIG.get("dry_state_file", "dry_state.json")))
 OFFSET_FILE = Path(os.environ.get("BOT_OFFSET_FILE", CONFIG.get("offset_file", "tg_offset")))
+REMINDERS_STATE_FILE = Path(os.environ.get("BOT_REMINDERS_STATE_FILE", CONFIG.get("reminders_state_file", "reminders_state.json")))
+REMINDER_CONFIRM_TTL_SECONDS = int(os.environ.get("BOT_REMINDER_CONFIRM_TTL_SECONDS", "1800"))
+_REMINDERS = {}   # tarea -> fecha (YYYY-MM-DD) en que se disparó por última vez
 
 STATE_LABELS = {
     sm.OUT: "fuera",
@@ -667,6 +671,140 @@ def handle(chat_id, text):
     send(chat_id, "No te he entendido. Usa: /fichar · /pausar · /estado")
 
 
+# --- Recordatorios programados (scheduler integrado en el loop; sin hilos) -------------
+# Dos tareas, una vez al día: (1) probe de solo lectura del token y aviso si caduca;
+# (2) recordatorio "sigues fichado" a tu hora de salida, con botón SI para fichar salida
+# (pasa por el flujo normal con re-lectura y guardas; NUNCA ficha solo).
+
+def reminders_config():
+    return CONFIG.get("reminders") or {}
+
+
+def _parse_hhmm(value):
+    try:
+        hh, mm = str(value).strip().split(":")
+        hh, mm = int(hh), int(mm)
+        if 0 <= hh < 24 and 0 <= mm < 60:
+            return hh, mm
+    except (ValueError, AttributeError):
+        pass
+    return None
+
+
+def load_reminders_state():
+    global _REMINDERS
+    if not REMINDERS_STATE_FILE.exists():
+        return
+    try:
+        data = json.loads(REMINDERS_STATE_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            _REMINDERS = {str(k): str(v) for k, v in data.items()}
+    except Exception as e:  # noqa: BLE001
+        log.error("No se pudo cargar reminders_state: %s", e)
+
+
+def save_reminders_state():
+    try:
+        REMINDERS_STATE_FILE.write_text(json.dumps(_REMINDERS, indent=2), encoding="utf-8")
+        _secure_chmod(REMINDERS_STATE_FILE)
+    except Exception as e:  # noqa: BLE001
+        log.error("No se pudo guardar reminders_state: %s", e)
+
+
+def _reminder_due(now, sched_hhmm, last_date, window_min=None) -> bool:
+    """True si la tarea aún no se disparó hoy y la hora actual ya pasó la programada
+    (y, si se indica window_min, no se ha pasado de la ventana — para no disparar tarde
+    tras un arranque a deshora)."""
+    if sched_hhmm is None:
+        return False
+    if last_date == now.date().isoformat():
+        return False
+    sched = now.replace(hour=sched_hhmm[0], minute=sched_hhmm[1], second=0, microsecond=0)
+    if now < sched:
+        return False
+    if window_min is not None and now > sched + timedelta(minutes=window_min):
+        return False
+    return True
+
+
+def _bound_chats():
+    for chat_str, employee_id in LINKS.all().items():
+        try:
+            yield int(chat_str), employee_id
+        except ValueError:
+            yield chat_str, employee_id
+
+
+def _run_token_probe(cfg):
+    """Solo lectura: comprueba que la sesión de Sesame responde; avisa si no, y si
+    ENABLE_REAL está a punto de caducar."""
+    if sesame_client.DRY_RUN:
+        return
+    warn_days = float(cfg.get("enable_real_warn_days", 3))
+    days = enable_real_days_left()
+    for chat_id, employee_id in _bound_chats():
+        try:
+            sesame_client.get_current_state(employee_id)
+        except Exception:  # noqa: BLE001
+            audit("reminder_token_dead", chat_id, employee_id)
+            send(chat_id, "⚠️ No puedo conectar con Sesame: tu sesión pudo caducar. "
+                          "Recaptura usid/csid/esid en config.json y reinicia el bot.")
+        if days is not None and days <= warn_days:
+            audit("reminder_enable_real_soon", chat_id)
+            send(chat_id, f"🔐 ENABLE_REAL caduca en {days:.1f} días. "
+                          "Re-arma con ./arm_real.sh en el servidor.")
+
+
+def _run_clock_out_reminder(cfg):
+    """Si sigues fichado a tu hora de salida, te avisa con botón SI para fichar salida
+    (deja un PENDING; el SI pasa por run_plan con re-lectura, igual que un fichar normal)."""
+    label = cfg.get("clock_out_time", "")
+    for chat_id, employee_id in _bound_chats():
+        try:
+            state = get_state(employee_id)
+        except Exception:  # noqa: BLE001
+            continue
+        if state not in (sm.WORKING, sm.REMOTE):
+            continue
+        plan = sm.plan_actions(state, sm.FICHAR)   # trabajando -> CLOCK_OUT (con confirmación)
+        if not plan.actions:
+            continue
+        PENDING[chat_id] = {
+            "command": sm.FICHAR, "plan": plan, "state": state,
+            "expires_at": time.time() + REMINDER_CONFIRM_TTL_SECONDS,
+        }
+        audit("reminder_clock_out", chat_id, employee_id, state=state)
+        send(chat_id,
+             f"⏰ Son las {label} (tu hora de salida) y sigues {state_label(state)}. "
+             "¿Cierro la jornada antes de que Sesame marque incidencia?\n"
+             "Pulsa SI para fichar salida o NO para seguir.",
+             confirm_keyboard())
+
+
+def run_scheduled(now=None):
+    """Comprueba y dispara las tareas programadas (llamado en cada vuelta del loop)."""
+    cfg = reminders_config()
+    if not cfg.get("enabled"):
+        return
+    now = now or datetime.now()
+    today = now.date().isoformat()
+
+    if _reminder_due(now, _parse_hhmm(cfg.get("token_probe_time", "08:00")), _REMINDERS.get("token_probe")):
+        try:
+            _run_token_probe(cfg)
+        finally:
+            _REMINDERS["token_probe"] = today
+            save_reminders_state()
+
+    window = int(cfg.get("clock_out_window_min", 120))
+    if _reminder_due(now, _parse_hhmm(cfg.get("clock_out_time")), _REMINDERS.get("clock_out"), window_min=window):
+        try:
+            _run_clock_out_reminder(cfg)
+        finally:
+            _REMINDERS["clock_out"] = today
+            save_reminders_state()
+
+
 def load_offset() -> int:
     try:
         return int(OFFSET_FILE.read_text(encoding="utf-8").strip())
@@ -683,6 +821,7 @@ def main():
     if not TOKEN or TOKEN == "PEGA_AQUI_EL_TOKEN_DE_BOTFATHER":
         raise SystemExit("Configura BOT_TELEGRAM_TOKEN (de @BotFather) para arrancar.")
     load_dry_state()
+    load_reminders_state()
     log.info("Bot arrancado. DRY_RUN=%s ALLOW_REAL=%s", sesame_client.DRY_RUN, sesame_client.ALLOW_REAL)
     offset = load_offset()
     backoff = 1
@@ -704,6 +843,12 @@ def main():
                     handle(chat, msg.get("text", ""))
                 except Exception as e:  # noqa: BLE001
                     log.error("handle(%s): %s", chat, e)
+            # Tareas programadas (probe del token, recordatorio de salida). Aisladas:
+            # un fallo aquí no debe tumbar el loop ni disparar el backoff de red.
+            try:
+                run_scheduled()
+            except Exception as e:  # noqa: BLE001
+                log.error("run_scheduled: %s", e)
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             # Errores de red esperables en long-polling: backoff exponencial con techo.
             log.warning("red: %s (reintento en %ss)", e, backoff)

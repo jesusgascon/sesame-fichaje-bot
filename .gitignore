@@ -10,6 +10,7 @@ audit*.jsonl
 dry_state.json
 links.json
 tg_offset
+reminders_state.json
 ENABLE_REAL
 .locks/
 

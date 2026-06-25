@@ -3,6 +3,26 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es/). Este proyecto
 sigue versionado semántico.
 
+## [1.0.4] — 2026-06-25
+
+Recordatorios proactivos (backlog del segundo council). Scheduler integrado en el
+loop (stdlib, sin hilos); solo lecturas y avisos, NUNCA ficha solo.
+
+### Añadido
+- **Recordatorio de salida**: si sigues fichado a tu hora de salida
+  (`reminders.clock_out_time`, p.ej. 16:45), el bot te avisa con botón **SI** para
+  fichar salida en un toque (pasa por el flujo normal con re-lectura y guardas). Pensado
+  para cerrar a tiempo y evitar la incidencia que Sesame envía por email a salida+15.
+- **Probe diario del token** (`reminders.token_probe_time`): comprueba la sesión de
+  Sesame de solo lectura y avisa si caducó; también avisa si `ENABLE_REAL` está a punto
+  de caducar (`enable_real_warn_days`).
+- Bloque `reminders` en `config.example.json`; estado del scheduler en
+  `reminders_state.json` (gitignored). Tests (`tests/test_reminders.py`); 71 en verde.
+
+### Notas
+- El recordatorio de salida NO ficha de forma autónoma: solo deja una confirmación
+  pendiente; el cierre real exige tu SI (uso legítimo: presencia real).
+
 ## [1.0.3] — 2026-06-25
 
 Pack de observabilidad y fiabilidad (segundo LLM council). Solo correcciones y

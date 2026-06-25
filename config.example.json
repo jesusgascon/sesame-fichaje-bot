@@ -30,5 +30,14 @@
   "_pause_comment": "workBreakId del tipo de Descanso. Sale del campo workBreakId de tus checks reales (NO de assigned-work-check-types). Las pausas usan POST .../employees/{id}/pause con este id; terminar la pausa es un check-in normal.",
   "pause_check_type_id": null,
 
-  "_safety": "Modo real: exige BOT_DRY_RUN=0, BOT_ALLOW_REAL=1 Y el fichero ENABLE_REAL vigente (./arm_real.sh), ademas de chat vinculado por OTP. Desarmado por defecto."
+  "_safety": "Modo real: exige BOT_DRY_RUN=0, BOT_ALLOW_REAL=1 Y el fichero ENABLE_REAL vigente (./arm_real.sh), ademas de chat vinculado por OTP. Desarmado por defecto.",
+
+  "_reminders_comment": "Recordatorios (solo lectura; el de salida deja un boton SI para fichar, nunca ficha solo). clock_out_time = tu hora de salida (avisa si sigues fichado). token_probe_time = chequeo diario del token. Horas en hora local del servidor (Europe/Madrid).",
+  "reminders": {
+    "enabled": true,
+    "clock_out_time": "16:45",
+    "clock_out_window_min": 120,
+    "token_probe_time": "08:00",
+    "enable_real_warn_days": 3
+  }
 }
