@@ -3,6 +3,29 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es/). Este proyecto
 sigue versionado semántico.
 
+## [1.0.1] — 2026-06-25
+
+Publicación del repositorio. Solo cambios de documentación y metadatos; **sin cambios
+de funcionalidad** (el bot en producción sigue igual).
+
+### Cambiado
+- Repositorio **público** bajo licencia **MIT** (antes privado).
+- `README.md` actualizado a estado de producción (v1.0.0, servicio systemd), retirada la
+  redacción de fase de simulación.
+- `CLAUDE.md` y docs reflejan repo público e historial purgado.
+
+### Añadido
+- `LICENSE` (MIT), `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md` y `.github/SECURITY.md`,
+  alineados con el repo hermano `sesame-premium-dashboard`.
+
+### Seguridad
+- Auditoría previa a publicar: sin secretos en ficheros trackeados ni en el historial.
+- **Historial reescrito** (`git filter-repo`) para purgar coordenadas GPS reales que
+  estaban en `config.example.json`; sustituidas por coordenadas de ejemplo genéricas.
+
+### Eliminado
+- `docs/github-private.md` (guía de repositorio privado, obsoleta) y sus enlaces.
+
 ## [1.0.0] — 2026-06-25
 
 Primera versión funcional: **modo real validado** (fichar y pausar de verdad en
