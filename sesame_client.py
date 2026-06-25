@@ -2,9 +2,9 @@
 Cliente de fichaje sobre Sesame (autónomo, con TU propio token).
 
 SEGURIDAD POR DEFECTO: arranca en DRY-RUN. En dry-run NO se hace ninguna
-petición a Sesame: solo se registra (log) "lo que se haría". Para ejecutar de
-verdad hacen falta DOS interruptores a la vez:
-    BOT_DRY_RUN=0   y   BOT_ALLOW_REAL=1
+petición a Sesame: solo se registra (log) "lo que se haría". El camino real exige
+TRES factores simultáneos (ver real_path_armed):
+    BOT_DRY_RUN=0   +   BOT_ALLOW_REAL=1   +   fichero ENABLE_REAL vigente
 Así un despiste no puede provocar un fichaje real.
 
 A diferencia del dashboard (que usa un token ADMIN solo para LEER al equipo),
@@ -24,6 +24,7 @@ import os
 import time
 from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 import ssl
 import urllib.request
 from urllib.error import HTTPError
@@ -41,9 +42,9 @@ CONFIG_PATH = Path(os.environ.get("BOT_CONFIG", "config.json"))
 ENABLE_REAL_FILE = Path(os.environ.get("BOT_ENABLE_REAL_FILE", "ENABLE_REAL"))
 ENABLE_REAL_TTL = int(os.environ.get("BOT_ENABLE_REAL_TTL_SECONDS", "3600"))
 
-# Tipo de "pausa" en Sesame (de GET /api/v3/employees/{id}/assigned-work-check-types).
-# Se resuelve vía get_setting("pause_check_type_id"), que ya cubre env+config.
-# TODO: confirmar el id real antes de usar pausas en real.
+# workBreakId del "Descanso" (confirmado en real; sale de tus checks reales, no de
+# assigned-work-check-types). Se resuelve vía get_setting("pause_check_type_id"),
+# que ya cubre env+config.
 
 _ENDPOINT = {
     "CLOCK_IN":    ("check-in",  False),
@@ -205,16 +206,25 @@ def execute_action(action: str, employee_id: str, coords=None, auth=None) -> dic
 
 
 def execute_plan(actions, employee_id, coords=None, auth=None) -> list:
+    """Ejecuta las acciones EN ORDEN. Si una falla, NO aborta con excepción:
+    devuelve lo ya ejecutado más un resultado con ok=False y el motivo, y se
+    detiene (no hay rollback). Así el bot puede avisar de un plan a medias en vez
+    de mostrar un "✅" engañoso.
+    """
     cfg = load_config()
-    return [
-        execute_action(
-            a,
-            employee_id,
-            coords if coords is not None else get_coordinates(cfg),
-            auth if auth is not None else get_auth(cfg),
-        )
-        for a in actions
-    ]
+    coords = coords if coords is not None else get_coordinates(cfg)
+    auth = auth if auth is not None else get_auth(cfg)
+    results = []
+    for a in actions:
+        try:
+            res = execute_action(a, employee_id, coords, auth)
+        except Exception as e:  # noqa: BLE001
+            results.append({"action": a, "ok": False, "error": str(e)[:200]})
+            break
+        results.append(res)
+        if not res.get("ok", False):
+            break
+    return results
 
 
 def get_current_state(employee_id: str, auth=None, state_url_template: str | None = None) -> str:
@@ -361,13 +371,43 @@ def _format_check_time(value):
     return _format_time_value(value)
 
 
+_DISPLAY_TZ_CACHE = None
+
+
+def _display_tz():
+    """Zona horaria para MOSTRAR horas al usuario (configurable con
+    `display_timezone` en config / BOT_DISPLAY_TIMEZONE; por defecto Europe/Madrid).
+
+    Sesame suele devolver timestamps en UTC; sin convertir, /hoy mostraría las horas
+    desfasadas 1-2h. Devuelve None solo si el sistema no tiene tzdata (raro en Linux),
+    en cuyo caso se imprime la hora tal cual viene.
+    """
+    global _DISPLAY_TZ_CACHE
+    if _DISPLAY_TZ_CACHE is None:
+        for name in (get_setting("display_timezone") or "Europe/Madrid", "Europe/Madrid"):
+            try:
+                _DISPLAY_TZ_CACHE = ZoneInfo(name)
+                break
+            except Exception:  # noqa: BLE001  (zona inválida o falta tzdata)
+                continue
+    return _DISPLAY_TZ_CACHE
+
+
 def _format_time_value(value):
     text = str(value)
     if "T" in text:
         try:
-            return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%H:%M:%S")
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
         except ValueError:
-            pass
+            dt = None
+        if dt is not None:
+            # Si el timestamp trae zona (p.ej. UTC con 'Z'), lo pasamos a la zona local
+            # de visualización antes de imprimir la hora de pared. Sin esto, un fichaje
+            # a las 11:00 (Madrid) devuelto como 09:00:00Z saldría como "09:00:00".
+            tz = _display_tz()
+            if dt.tzinfo is not None and tz is not None:
+                dt = dt.astimezone(tz)
+            return dt.strftime("%H:%M:%S")
     if len(text) >= 8 and text[2:3] == ":":
         return text[:8]
     return text
@@ -488,7 +528,7 @@ def _real_get_json(url, auth):  # pragma: no cover  (depende de Sesame)
         raise RuntimeError(f"Sesame GET falló: HTTP {e.code}") from e
 
 
-def _real_post(url, body, auth):  # pragma: no cover  (reservado Fase 2)
+def _real_post(url, body, auth):  # pragma: no cover  (camino real, validado en producción)
     """Camino real aislado: POST directo a Sesame con TU sesión.
 
     Usa _auth_headers, así que admite Bearer o cookie USID igual que la lectura.

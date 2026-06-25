@@ -19,6 +19,9 @@
   "_coordinates_comment": "Coordenadas de EJEMPLO (centro de Madrid). Pon las TUYAS reales en config.json.",
   "coordinates": { "latitude": 40.4168, "longitude": -3.7038 },
 
+  "_display_timezone_comment": "Zona horaria para mostrar las horas en /hoy (Sesame suele devolver UTC). Por defecto Europe/Madrid.",
+  "display_timezone": "Europe/Madrid",
+
   "_safety_runtime_comment": "Guardas locales del bot. audit_log esta gitignored.",
   "audit_log": "audit.jsonl",
   "dry_state_file": "dry_state.json",

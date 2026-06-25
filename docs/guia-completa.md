@@ -94,6 +94,7 @@ Puedes usarlos con `/` (menú) o sin barra donde se indica.
 | `/sesion` | Comprueba si tu sesión de Sesame sigue viva. |
 | `/modo` | Modo de seguridad: autorizado, vinculado, lee real, ficha real, armado, kill switch. |
 | `/vincular` | Vincula este chat con tu usuario por OTP (código por consola). |
+| `/desvincular` | Desvincula este chat de tu usuario. |
 | `/mi_chat_id` | Muestra tu chat_id para autorizarte. |
 | `/reset` | Reinicia el estado simulado a "fuera" (solo en simulación). |
 | `SI` / `NO` | Confirma o cancela una acción delicada. |

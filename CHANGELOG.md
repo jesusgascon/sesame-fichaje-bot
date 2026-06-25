@@ -3,6 +3,35 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es/). Este proyecto
 sigue versionado semántico.
 
+## [1.0.2] — 2026-06-25
+
+Fix-pack de correctitud salido de una revisión multi-perspectiva (LLM council).
+Solo correcciones; el contrato con Sesame y el modelo de seguridad no cambian.
+
+### Corregido
+- **Zona horaria en `/hoy`**: las horas se convierten a `Europe/Madrid` (configurable
+  con `display_timezone`). Antes, si Sesame devolvía UTC (`...Z`), se mostraban 1-2h
+  desfasadas. Robusto ante DST y ante el sufijo `Z`.
+- **Éxito honesto**: `run_plan` ya no muestra `✅` por ausencia de excepción; comprueba
+  que cada acción fue 2xx.
+- **Plan a medias**: si un plan de 2 pasos (p.ej. cerrar pausa + jornada) falla a mitad,
+  el bot relee el estado real y avisa de qué se hizo y qué no, en vez de dar por bueno
+  un fichaje incompleto. `execute_plan` ya no aborta con excepción: devuelve lo
+  ejecutado más el fallo (sin rollback).
+
+### Añadido
+- Comando **`/desvincular`** (expone `LinkStore.remove`).
+- `display_timezone` en `config.example.json`.
+- Tests de regresión (`tests/test_correctness_pack.py`): zona horaria con DST, plan
+  parcial, éxito honesto y omisión de la re-lectura en la ruta inmediata.
+
+### Cambiado
+- Menos latencia: en la ruta inmediata no se re-lee el estado (la re-lectura de
+  idempotencia se mantiene tras una confirmación SI/NO, donde sí importa).
+- Docstrings/comentarios puestos al día con la realidad (se elimina la jerga de
+  "esqueleto/Fase 2/OTP contra teléfono de Sesame/cifrado en reposo"); el matiz del
+  gate R1 (binding sembrado desde config) queda documentado con honestidad.
+
 ## [1.0.1] — 2026-06-25
 
 Publicación del repositorio. Solo cambios de documentación y metadatos; **sin cambios

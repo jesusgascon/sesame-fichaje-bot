@@ -1,11 +1,14 @@
 """
-Esqueleto del bot de Telegram para fichar/pausar (DRY-RUN).
+Bot de Telegram para fichar/pausar en Sesame (long-polling, sin dependencias).
 
-- Sin dependencias externas: habla con la Bot API por HTTP (long-polling).
-- No arranca si no hay BOT_TELEGRAM_TOKEN (evita ejecuciones accidentales).
-- En dry-run NO ficha nada real (ver sesame_client).
-- Emparejamiento chat<->empleado: persistido en LinkStore (JSON). Fase 2: contacto
-  + OTP verificado contra el teléfono de tu perfil de Sesame, y almacén cifrado.
+- Habla con la Bot API por HTTP; no arranca sin BOT_TELEGRAM_TOKEN.
+- Seguro por defecto: en dry-run NO ficha nada real (ver sesame_client). El modo
+  real exige 3 factores (BOT_DRY_RUN=0 + BOT_ALLOW_REAL=1 + ENABLE_REAL) y chat
+  vinculado por OTP.
+- Emparejamiento chat<->empleado por OTP impreso en la CONSOLA del servidor
+  (segundo factor fuera de banda), persistido en LinkStore (JSON, chmod 600). El
+  OTP confirma ESTE chat; el employeeId vinculado sale de config (modelo de un solo
+  usuario), no se verifica contra el teléfono de Sesame.
 """
 
 import contextlib
@@ -268,6 +271,7 @@ def help_text():
         "- /mi_chat_id: muestra tu chat_id para autorizar este chat.\n"
         "- /reset: reinicia el estado simulado a fuera (solo pruebas).\n"
         "- /vincular: vincula este chat con tu usuario (codigo OTP por consola).\n"
+        "- /desvincular: desvincula este chat de tu usuario.\n"
         "- /ayuda: muestra esta ayuda.\n\n"
         "Estados:\n"
         "- fuera: sin jornada abierta.\n"
@@ -342,12 +346,15 @@ def apply_dry_run_state(employee_id, actions):
     return state
 
 
-def run_plan(chat_id, employee_id, plan, command=None, expected_state=None):
+def run_plan(chat_id, employee_id, plan, command=None, expected_state=None, recheck=True):
     if kill_switch_enabled():
         audit("blocked_kill_switch", chat_id, employee_id, actions=plan.actions)
         return send(chat_id, "Acciones bloqueadas por kill switch.")
 
-    if command and expected_state is not None:
+    # Re-lectura de idempotencia: relevante cuando hubo un hueco de interacción
+    # (confirmación SI/NO). En la ruta inmediata el estado se acaba de leer, así que
+    # se omite (recheck=False) para no hacer dos round-trips a Sesame.
+    if recheck and command and expected_state is not None:
         fresh_state = get_state(employee_id)
         fresh_plan = sm.plan_actions(fresh_state, command)
         if fresh_plan.actions != plan.actions:
@@ -382,7 +389,7 @@ def run_plan(chat_id, employee_id, plan, command=None, expected_state=None):
     if results and results[0].get("dry_run"):
         new_state = apply_dry_run_state(employee_id, plan.actions)
         audit("execute_plan_dry_run", chat_id, employee_id, actions=plan.actions)
-        send(
+        return send(
             chat_id,
             "🧪 (simulación) "
             + plan.description
@@ -391,17 +398,42 @@ def run_plan(chat_id, employee_id, plan, command=None, expected_state=None):
             + f"\nEstado simulado: {state_label(new_state)}",
             remove_keyboard(),
         )
-    else:
-        statuses = [r.get("status") for r in results]
+
+    # Camino real: solo "✅" si TODAS las acciones fueron 2xx (#5). Si alguna falló,
+    # avisamos del plan a medias releyendo el estado real (#2) en vez de mentir.
+    statuses = [r.get("status") for r in results]
+    done = [r["action"] for r in results if r.get("ok")]
+    failed = next((r for r in results if not r.get("ok")), None)
+
+    if results and failed is None:
         audit("execute_plan_ok", chat_id, employee_id, actions=plan.actions, statuses=statuses)
-        send(chat_id, "✅ " + plan.description, remove_keyboard())
+        return send(chat_id, "✅ " + plan.description, remove_keyboard())
+
+    audit(
+        "execute_plan_partial", chat_id, employee_id,
+        actions=plan.actions, done=done,
+        failed=(failed or {}).get("action"), statuses=statuses,
+        error=str((failed or {}).get("error", ""))[:200],
+    )
+    try:
+        state_txt = f"\nEstado actual en Sesame: {state_label(get_state(employee_id))}."
+    except Exception:  # noqa: BLE001
+        state_txt = ""
+    failed_label = ACTION_LABELS.get((failed or {}).get("action"), (failed or {}).get("action", "?"))
+    if done:
+        head = f"⚠️ Acción a medias: se hizo «{actions_label(done)}» pero falló «{failed_label}»."
+    else:
+        head = f"❌ No se pudo ejecutar «{failed_label}»."
+    return send(chat_id, head + state_txt + "\nRevisa y reintenta.", remove_keyboard())
 
 
 def resolve_employee_id(chat_id):
     """Resuelve el employeeId del chat.
 
-    Gate R1: en modo REAL el employeeId sale SOLO del binding verificado por OTP,
-    nunca de config ni del mensaje. En dry-run/desarrollo se admite el fallback a
+    Gate R1: en modo REAL el employeeId se lee SOLO del binding (LinkStore), nunca
+    del mensaje. Matiz honesto (modelo de un solo usuario): ese binding se rellenó
+    desde config.employee_id al verificar el OTP, así que el OTP confirma "este
+    chat", no la identidad en Sesame. En dry-run/desarrollo se admite el fallback a
     BOT_TEST_EMPLOYEE_ID / config para poder probar sin vincular.
     """
     bound = LINKS.get(chat_id)
@@ -491,6 +523,12 @@ def handle(chat_id, text):
             audit("dry_state_reset", chat_id, employee_id)
             return send(chat_id, "Simulación reiniciada. Estado actual: fuera")
         return send(chat_id, "Reset solo disponible en simulación.")
+    if t == "/desvincular":
+        if LINKS.get(chat_id):
+            LINKS.remove(chat_id)
+            audit("unbound", chat_id, employee_id)
+            return send(chat_id, "Desvinculado. Este chat ya no está asociado a tu usuario. Usa /vincular para volver a vincular.")
+        return send(chat_id, "Este chat no estaba vinculado.")
 
     if t in ("si", "sí", "confirmar", "no", "cancelar", sm.FICHAR, "/fichar", sm.PAUSAR, "/pausar"):
         if rate_limited(chat_id):
@@ -530,7 +568,8 @@ def handle(chat_id, text):
             }
             audit("confirm_required", chat_id, employee_id, command=command, state=state, actions=plan.actions)
             return send(chat_id, f"Estás {state_label(state)}. {plan.description}.\nPulsa SI para confirmar o NO para cancelar.", confirm_keyboard())
-        return run_plan(chat_id, employee_id, plan, command=command, expected_state=state)
+        # Ruta inmediata: el estado se acaba de leer; no hace falta re-leerlo (#6).
+        return run_plan(chat_id, employee_id, plan, command=command, expected_state=state, recheck=False)
 
     send(chat_id, "No te he entendido. Usa: /fichar · /pausar · /estado")
 

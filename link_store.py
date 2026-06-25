@@ -1,12 +1,9 @@
 """Almacén persistente del vínculo chat <-> empleado (Telegram <-> Sesame).
 
-Hoy: JSON plano gitignored (`links.json`). Es la COSTURA para la Fase 2: el
-emparejamiento verificado por OTP + cifrado en reposo se implementa sustituyendo
-la persistencia de esta clase (load/save) sin tocar el bot.
-
-Mientras el OTP no exista, el store está vacío y el bot sigue derivando el
-employee_id de la config; en cuanto haya binding real, `set()` lo persiste y
-sobrevive a reinicios (a diferencia del antiguo dict en memoria).
+JSON plano gitignored (`links.json`, chmod 600). `set()` persiste el binding que
+crea `/vincular` al verificar el OTP, de modo que sobrevive a reinicios (a
+diferencia de un dict en memoria). Cifrado en reposo descartado por decisión (cero
+dependencias): se protege con permisos 600 sobre el fichero.
 """
 
 import json
