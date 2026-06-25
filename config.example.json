@@ -16,6 +16,7 @@
   "_state_comment": "Endpoint GET de solo lectura para estado actual. Se confirmará desde el navegador/dashboard antes de quitar dry-run. Admite {base} y {employee_id}.",
   "state_url_template": null,
 
+  "_coordinates_comment": "Coordenadas de EJEMPLO (centro de Madrid). Pon las TUYAS reales en config.json.",
   "coordinates": { "latitude": 40.4168, "longitude": -3.7038 },
 
   "_safety_runtime_comment": "Guardas locales del bot. audit_log esta gitignored.",
