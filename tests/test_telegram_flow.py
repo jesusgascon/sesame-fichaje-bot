@@ -21,6 +21,7 @@ class FlowTestCase(unittest.TestCase):
         tb.DRY_STATE.clear()
         tb.PENDING.clear()
         tb.PENDING_OTP.clear()
+        tb.PENDING_UNBIND.clear()
         tb.RATE.clear()
         tb.LOCKS.clear()
         tb.CONFIG["authorized_chat_ids"] = [1]
@@ -139,6 +140,46 @@ class TestGateR1(FlowTestCase):
 
     def test_dry_run_allows_config_fallback(self):
         self.assertEqual(tb.resolve_employee_id(1), "demo")
+
+
+class TestDesvincularConfirm(FlowTestCase):
+    """/desvincular es destructivo: pide confirmación SI/NO con caducidad."""
+
+    def test_desvincular_asks_confirmation_first(self):
+        tb.LINKS.set(1, "demo")
+        tb.handle(1, "/desvincular")
+        self.assertIn("SI", self.last)
+        self.assertEqual(tb.LINKS.get(1), "demo")   # aún NO se ha desvinculado
+        self.assertIn(1, tb.PENDING_UNBIND)
+
+    def test_desvincular_confirmed_removes_binding(self):
+        tb.LINKS.set(1, "demo")
+        tb.handle(1, "/desvincular")
+        tb.handle(1, "SI")
+        self.assertIsNone(tb.LINKS.get(1))
+        self.assertNotIn(1, tb.PENDING_UNBIND)
+        self.assertIn("Desvinculado", self.last)
+
+    def test_desvincular_cancelled_keeps_binding(self):
+        tb.LINKS.set(1, "demo")
+        tb.handle(1, "/desvincular")
+        tb.handle(1, "NO")
+        self.assertEqual(tb.LINKS.get(1), "demo")
+        self.assertNotIn(1, tb.PENDING_UNBIND)
+        self.assertIn("Sigues vinculado", self.last)
+
+    def test_desvincular_confirmation_expires(self):
+        tb.LINKS.set(1, "demo")
+        tb.handle(1, "/desvincular")
+        tb.PENDING_UNBIND[1] = tb.time.time() - 1   # forzar caducidad
+        tb.handle(1, "SI")
+        self.assertEqual(tb.LINKS.get(1), "demo")   # no se desvincula tras caducar
+        self.assertIn("caducad", self.last.lower())
+
+    def test_desvincular_when_not_linked(self):
+        tb.handle(1, "/desvincular")
+        self.assertIn("no estaba vinculado", self.last.lower())
+        self.assertNotIn(1, tb.PENDING_UNBIND)
 
 
 class TestRateLimit(unittest.TestCase):

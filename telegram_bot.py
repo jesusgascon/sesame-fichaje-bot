@@ -46,6 +46,7 @@ LINKS_FILE = Path(os.environ.get("BOT_LINKS_FILE", CONFIG.get("links_file", "lin
 LINKS = link_store.LinkStore(LINKS_FILE)   # chat_id -> employeeId (persistente; binding por OTP)
 PENDING = {}        # chat_id -> dict(command, plan, state, expires_at)
 PENDING_OTP = {}    # chat_id -> dict(code, expires_at) para /vincular
+PENDING_UNBIND = {} # chat_id -> expires_at para confirmar /desvincular (acción destructiva)
 FAKE_STATE = os.environ.get("BOT_FAKE_STATE", "out")  # estado simulado para dry-run
 DRY_STATE = {}       # employeeId -> estado simulado mientras corre el proceso
 LOCKS = set()       # employeeId en ejecución (lock en memoria; en real se añade flock)
@@ -346,7 +347,7 @@ def help_text():
         "- /mi_chat_id: muestra tu chat_id para autorizar este chat.\n"
         "- /reset: reinicia el estado simulado a fuera (solo pruebas).\n"
         "- /vincular: vincula este chat con tu usuario (codigo OTP por consola).\n"
-        "- /desvincular: desvincula este chat de tu usuario.\n"
+        "- /desvincular: desvincula este chat de tu usuario (pide confirmación).\n"
         "- /ayuda: muestra esta ayuda.\n\n"
         "Estados:\n"
         "- fuera: sin jornada abierta.\n"
@@ -621,16 +622,37 @@ def handle(chat_id, text):
             return send(chat_id, "Simulación reiniciada. Estado actual: fuera")
         return send(chat_id, "Reset solo disponible en simulación.")
     if t == "/desvincular":
-        if LINKS.get(chat_id):
-            LINKS.remove(chat_id)
-            audit("unbound", chat_id, employee_id)
-            return send(chat_id, "Desvinculado. Este chat ya no está asociado a tu usuario. Usa /vincular para volver a vincular.")
-        return send(chat_id, "Este chat no estaba vinculado.")
+        if not LINKS.get(chat_id):
+            return send(chat_id, "Este chat no estaba vinculado.")
+        # Acción destructiva: rompe el binding y obliga a re-vincular por OTP desde
+        # la consola del servidor. Pide confirmación explícita (con caducidad).
+        PENDING_UNBIND[chat_id] = time.time() + CONFIRM_TTL_SECONDS
+        audit("unbind_confirm_required", chat_id, employee_id)
+        return send(
+            chat_id,
+            "⚠️ Vas a DESVINCULAR este chat. El bot dejará de fichar y para volver a "
+            "usarlo tendrás que re-vincular por OTP desde la consola del servidor.\n"
+            "Pulsa SI para confirmar o NO para cancelar.",
+            confirm_keyboard(),
+        )
 
     if t in ("si", "sí", "confirmar", "no", "cancelar", sm.FICHAR, "/fichar", sm.PAUSAR, "/pausar"):
         if rate_limited(chat_id):
             audit("blocked_rate_limit", chat_id)
             return send(chat_id, "Demasiadas peticiones seguidas. Espera un momento.")
+
+    if chat_id in PENDING_UNBIND and t in ("si", "sí", "confirmar"):
+        expires = PENDING_UNBIND.pop(chat_id)
+        if time.time() > expires:
+            audit("unbind_confirm_expired", chat_id, employee_id)
+            return send(chat_id, "La confirmación ha caducado. Repite /desvincular.", remove_keyboard())
+        LINKS.remove(chat_id)
+        audit("unbound", chat_id, employee_id)
+        return send(chat_id, "Desvinculado. Este chat ya no está asociado a tu usuario. Usa /vincular para volver a vincular.", remove_keyboard())
+    if chat_id in PENDING_UNBIND and t in ("no", "cancelar"):
+        PENDING_UNBIND.pop(chat_id)
+        audit("unbind_confirm_cancel", chat_id, employee_id)
+        return send(chat_id, "Cancelado. Sigues vinculado.", remove_keyboard())
 
     if chat_id in PENDING and t in ("si", "sí", "confirmar"):
         pending = PENDING.pop(chat_id)
