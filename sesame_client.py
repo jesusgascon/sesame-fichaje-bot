@@ -245,8 +245,9 @@ def get_current_state(employee_id: str, auth=None, state_url_template: str | Non
         # "fuera" y un `fichar` provocaría un segundo check-in (doble fichaje). Leer
         # también ayer deja que classify_state_from_checks recoja el tramo abierto.
         yesterday = (date.today() - timedelta(days=1)).isoformat()
+        today = date.today().isoformat()
         return classify_state_from_checks(
-            get_checks(employee_id, from_day=yesterday, auth=auth or get_auth(cfg))
+            get_checks(employee_id, from_day=yesterday, to_day=today, auth=auth or get_auth(cfg))
         )
 
     url = template.format(base=SESAME_BASE, employee_id=employee_id)

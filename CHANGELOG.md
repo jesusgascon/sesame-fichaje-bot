@@ -3,6 +3,19 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es/). Este proyecto
 sigue versionado semántico.
 
+## [1.0.5] — 2026-06-26
+
+Hotfix de un fallo introducido en 1.0.3.
+
+### Corregido
+- **El bot leía el estado siempre como "fuera".** El fix de medianoche de 1.0.3 llamaba a
+  `get_checks(from_day=ayer)` sin `to_day`, y `get_checks` hacía `end = to_day or start`,
+  por lo que consultaba **ayer→ayer** y el fichaje de HOY era invisible. Resultado: `/estado`
+  decía "fuera" pese a estar fichado, `/pausar` ofrecía iniciar jornada y un intento de
+  fichar provocaba un check-in rechazado por Sesame. Ahora la ventana es **ayer→hoy**.
+- Tests reforzados: se verifica que la ventana incluye HOY y, de extremo a extremo (por el
+  `get_checks` real), que un fichaje abierto hoy se lee como "working". 72 en verde.
+
 ## [1.0.4] — 2026-06-25
 
 Recordatorios proactivos (backlog del segundo council). Scheduler integrado en el

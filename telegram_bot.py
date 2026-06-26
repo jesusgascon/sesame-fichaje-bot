@@ -36,7 +36,7 @@ import state_machine as sm
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("telegram_bot")
 
-BOT_VERSION = "1.0.4"
+BOT_VERSION = "1.0.5"
 
 CONFIG = sesame_client.load_config()
 TOKEN = os.environ.get("BOT_TELEGRAM_TOKEN") or CONFIG.get("telegram_token", "")
