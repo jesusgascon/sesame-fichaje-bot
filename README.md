@@ -12,11 +12,13 @@ aquí se **escribe** en Sesame, así que vive aparte para aislar el riesgo.
 > **[`docs/guia-completa.md`](docs/guia-completa.md)** (comandos, puesta en marcha,
 > pausas, herramientas, resolución de problemas).
 
-> ✅ **v1.0.0 — en producción.** El bot ficha de verdad (jornadas y pausas) en tu
+> ✅ **v1.0.5 — en producción.** El bot ficha de verdad (jornadas y pausas) en tu
 > usuario y corre como **servicio systemd** (siempre encendido). Modo real validado
-> en real (2026-06-25). Arranca **seguro por defecto**: el camino real exige 3 factores
-> y está **desarmado** hasta que lo armes (ver "Interruptores de seguridad" y
-> `docs/security.md`).
+> desde 2026-06-25. Incluye recibo read-after-write, recordatorios proactivos (salida +
+> token) y comandos de diagnóstico (`/salud`, `/version`). Arranca **seguro por
+> defecto**: el camino real exige 3 factores y está **desarmado** hasta que lo armes
+> (ver "Interruptores de seguridad" y `docs/security.md`). Detalle por versión en
+> [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Idea
 Desde tu móvil escribes al bot `fichar` o `pausar` y el bot registra la acción en
@@ -94,8 +96,11 @@ Ver `PLAN.md` y `docs/security.md`. Resumen:
 - ✅ Dry-run + `get_state` real + tests (stdlib).
 - ✅ Fase 2/seguridad: emparejamiento OTP (consola), gate R1, idempotencia (flock +
   dedupe), auditoría endurecida, kill switch en caliente, permisos 600, 3er factor.
-- ✅ **Modo real validado** (v1.0.0): fichar (jornadas) y pausar (descansos) en real,
+- ✅ **Modo real validado**: fichar (jornadas) y pausar (descansos) en real,
   contratos de Sesame confirmados (check-in/out y `/pause` + `workBreakId`).
+- ✅ **v1.0.5** (en producción): recibo read-after-write, aviso de sesión caducada,
+  recordatorios proactivos (salida + probe de token), `/salud` y `/version`. Historial
+  completo en [`CHANGELOG.md`](CHANGELOG.md).
 
 ### Estado real
 En dry-run, `/estado` sigue usando `BOT_FAKE_STATE`. Fuera de dry-run, el estado real se
