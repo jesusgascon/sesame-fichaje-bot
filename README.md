@@ -1,4 +1,8 @@
-# sesame-fichaje-bot
+<p align="center">
+  <img src="assets/logo.png" alt="sesame-fichaje-bot" width="160">
+</p>
+
+<h1 align="center">sesame-fichaje-bot</h1>
 
 Bot de **Telegram** para **fichar / pausar** en Sesame desde el móvil. Proyecto
 **independiente** del dashboard `calendario-vacaciones` (que es de solo lectura):
